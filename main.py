@@ -3,7 +3,7 @@
 #
 # Integrated Control Program
 #
-# LCD + JOYSTICK + ZERO SWITCH + BNO055 UART + MOTOR + WiFi Web
+# LCD + JOYSTICK + ZERO SWITCH + BNO055 UART + MOTOR
 #
 # GPIO
 #   GP0  : LCD SDA
@@ -30,8 +30,6 @@
 #   Angle data now comes directly from the wired BNO055.
 # =========================================================
 
-import network
-import socket
 import utime
 import gc
 import ujson
@@ -87,10 +85,6 @@ class Config:
     SW_IS_RIGHT = False
     KALMAN_GAIN = 0.01
     LPF_TAU = 0.01
-
-    # Web
-    WEB_UPDATE_ENABLE = False
-    WEB_UPDATE_INTERVAL = 5
 
     # Motor safety
     MOTOR_REQUIRE_ZERO = True
@@ -200,15 +194,6 @@ def clamp(value, minimum, maximum):
     return value
 
 
-def is_valid_number(value):
-
-    try:
-        float(value)
-        return True
-    except Exception:
-        return False
-
-
 def fitin360(angle):
 
     while angle > 180.0:
@@ -235,8 +220,6 @@ def save_config():
             "ANGLE_MIN": Config.ANGLE_MIN,
             "line1_setting": state.line1_setting,
             "line2_setting": state.line2_setting,
-            "WEB_UPDATE_ENABLE": Config.WEB_UPDATE_ENABLE,
-            "WEB_UPDATE_INTERVAL": Config.WEB_UPDATE_INTERVAL,
         }
 
         with open(Config.CONFIG_FILE, "w") as f:
@@ -269,13 +252,6 @@ def load_config():
         )
         Config.ANGLE_MIN = clamp(
             int(cfg.get("ANGLE_MIN", -90)), -180, -1
-        )
-
-        Config.WEB_UPDATE_ENABLE = bool(
-            cfg.get("WEB_UPDATE_ENABLE", False)
-        )
-        Config.WEB_UPDATE_INTERVAL = clamp(
-            int(cfg.get("WEB_UPDATE_INTERVAL", 5)), 1, 60
         )
 
         # -----------------------------------------------------
@@ -313,8 +289,6 @@ def load_config():
         Config.PWM_MIN = -30
         Config.ANGLE_MAX = 90
         Config.ANGLE_MIN = -90
-        Config.WEB_UPDATE_ENABLE = False
-        Config.WEB_UPDATE_INTERVAL = 5
         state.line1_setting = 0
         state.line2_setting = 1
 
@@ -2145,351 +2119,6 @@ async def display_task():
 
 
 # =========================================================
-# WIFI AP
-# =========================================================
-
-AP_SSID = "PicoMotor"
-AP_PASSWORD = "12345678"
-
-
-def start_wifi():
-
-    ap = network.WLAN(network.AP_IF)
-    ap.active(True)
-
-    try:
-        ap.config(
-            essid=AP_SSID,
-            password=AP_PASSWORD
-        )
-    except Exception:
-        try:
-            ap.config(
-                ssid=AP_SSID,
-                password=AP_PASSWORD
-            )
-        except Exception as e:
-            print("AP config error:", e)
-
-    while not ap.active():
-        utime.sleep_ms(100)
-
-    print(
-        "WiFi:",
-        ap.ifconfig()
-    )
-
-    return ap
-
-
-# =========================================================
-# WEB PAGE
-# =========================================================
-
-def web_page():
-
-    refresh_sec = (
-        Config.WEB_UPDATE_INTERVAL
-        if Config.WEB_UPDATE_ENABLE
-        else 999999
-    )
-
-    return """
-<!DOCTYPE html>
-<html>
-<head>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="{}">
-<title>Pico Control</title>
-</head>
-<body style="font-family:Arial;text-align:center;">
-<h2>Pico Motor Control</h2>
-<p>ANGLE : {:+.1f}</p>
-<p>OBS   : {:+.1f}</p>
-<p>KAL   : {:+.1f}</p>
-<p>LPF   : {:+.1f}</p>
-<p>GYRO  : {:+.1f}</p>
-<p>PWM   : {:+.0f}</p>
-<p>SENSOR: {}</p>
-<p>ZERO  : {}</p>
-<p>SW    : {}</p>
-<p>JOY   : {}</p>
-<p>MOTOR : {}</p>
-<p>RUN SW: GP6 (PRESS = RUN)</p>
-<hr>
-<h3>更新設定</h3>
-<a href="/set?item=update_on"><button>更新ON</button></a>
-<a href="/set?item=update_off"><button>更新OFF</button></a>
-<form action="/setval">
-<input type="hidden" name="item" value="interval">
-<input type="number" name="value" value="{}">
-<input type="submit" value="更新周期(秒)">
-</form>
-<hr>
-<h3>PWM設定</h3>
-<form action="/setval">
-<input type="hidden" name="item" value="pwm_max">
-PWM_MAX<br>
-<input type="number" name="value" value="{}">
-<input type="submit" value="設定">
-</form>
-<br>
-<form action="/setval">
-<input type="hidden" name="item" value="pwm_min">
-PWM_MIN<br>
-<input type="number" name="value" value="{}">
-<input type="submit" value="設定">
-</form>
-<hr>
-<h3>ANGLE設定</h3>
-<form action="/setval">
-<input type="hidden" name="item" value="ang_max">
-ANGLE_MAX<br>
-<input type="number" name="value" value="{}">
-<input type="submit" value="設定">
-</form>
-<br>
-<form action="/setval">
-<input type="hidden" name="item" value="ang_min">
-ANGLE_MIN<br>
-<input type="number" name="value" value="{}">
-<input type="submit" value="設定">
-</form>
-<hr>
-<a href="/set?item=zero"><button>ZERO SET</button></a>
-<a href="/set?item=stop"><button>MOTOR STOP</button></a>
-</body>
-</html>
-""".format(
-        refresh_sec,
-        state.angle,
-        state.observed_angle,
-        state.kalman_angle,
-        state.lpf2_angle,
-        state.gyro_z,
-        state.current_pwm_command,
-        "OK" if state.sensor_ok else "NG",
-        "YES" if state.zeroed else "NO",
-        "ON" if state.switch_pressed else "OFF",
-        state.joystick,
-        state.motor_state,
-        Config.WEB_UPDATE_INTERVAL,
-        Config.PWM_MAX,
-        Config.PWM_MIN,
-        Config.ANGLE_MAX,
-        Config.ANGLE_MIN
-    )
-
-
-# =========================================================
-# WEB ACTION
-# =========================================================
-
-def get_query_value(path):
-
-    if "value=" not in path:
-        return None
-
-    try:
-
-        return path.split(
-            "value=",
-            1
-        )[1].split(
-            " ",
-            1
-        )[0]
-
-    except Exception:
-        return None
-
-
-def handle_action(path):
-
-    if "item=update_on" in path:
-
-        Config.WEB_UPDATE_ENABLE = True
-
-    elif "item=update_off" in path:
-
-        Config.WEB_UPDATE_ENABLE = False
-
-    elif "item=interval" in path:
-
-        try:
-
-            val = int(
-                get_query_value(path)
-            )
-
-            Config.WEB_UPDATE_INTERVAL = clamp(
-                val, 1, 60
-            )
-
-        except Exception as e:
-            print("interval error:", e)
-
-    elif "item=pwm_max" in path:
-
-        try:
-
-            val = int(
-                get_query_value(path)
-            )
-
-            Config.PWM_MAX = clamp(
-                val, 1, 100
-            )
-
-        except Exception as e:
-            print("pwm_max error:", e)
-
-    elif "item=pwm_min" in path:
-
-        try:
-
-            val = int(
-                get_query_value(path)
-            )
-
-            Config.PWM_MIN = clamp(
-                val, -100, -1
-            )
-
-        except Exception as e:
-            print("pwm_min error:", e)
-
-    elif "item=ang_max" in path:
-
-        try:
-
-            val = int(
-                get_query_value(path)
-            )
-
-            Config.ANGLE_MAX = clamp(
-                val, 1, 180
-            )
-
-        except Exception as e:
-            print("ang_max error:", e)
-
-    elif "item=ang_min" in path:
-
-        try:
-
-            val = int(
-                get_query_value(path)
-            )
-
-            Config.ANGLE_MIN = clamp(
-                val, -180, -1
-            )
-
-        except Exception as e:
-            print("ang_min error:", e)
-
-    elif "item=zero" in path:
-
-        state.neutral = -state.lpf2_angle
-        state.zeroed = True
-        print("WEB ZERO SET")
-
-    elif "item=stop" in path:
-
-        state.target_pwm_command = 0.0
-        state.current_pwm_command = 0.0
-        motor_sleep()
-        print("WEB MOTOR STOP")
-
-    save_config()
-
-
-# =========================================================
-# WEB SERVER TASK
-# =========================================================
-
-async def web_server_task():
-
-    addr = socket.getaddrinfo(
-        "0.0.0.0",
-        80
-    )[0][-1]
-
-    s = socket.socket()
-
-    s.setsockopt(
-        socket.SOL_SOCKET,
-        socket.SO_REUSEADDR,
-        1
-    )
-
-    s.bind(addr)
-    s.listen(1)
-    s.settimeout(0.05)
-
-    print("Web start")
-
-    while True:
-
-        try:
-
-            try:
-                cl, addr = s.accept()
-            except Exception:
-                await asyncio.sleep_ms(50)
-                continue
-
-            try:
-
-                request = cl.recv(512).decode(
-                    "utf-8",
-                    "ignore"
-                )
-
-            except Exception:
-
-                cl.close()
-                continue
-
-            first_line = request.split(
-                "\r\n"
-            )[0]
-
-            if "favicon.ico" in first_line:
-
-                cl.close()
-                continue
-
-            if (
-                "GET /set?" in first_line or
-                "GET /setval?" in first_line
-            ):
-
-                handle_action(first_line)
-
-            response = web_page()
-
-            cl.send(
-                "HTTP/1.1 200 OK\r\n"
-                "Content-Type: text/html\r\n"
-                "Connection: close\r\n\r\n" +
-                response
-            )
-
-            cl.close()
-
-        except Exception as e:
-
-            print(
-                "web error:",
-                e
-            )
-
-        await asyncio.sleep_ms(50)
-
-
-# =========================================================
 # MONITOR TASK
 # =========================================================
 
@@ -2557,19 +2186,6 @@ async def main():
             await asyncio.sleep(1)
 
     # -----------------------------------------------------
-    # WiFi AP
-    # -----------------------------------------------------
-
-    lcd_print("WiFi", 0)
-    lcd_print("START", 1)
-
-    start_wifi()
-
-    await asyncio.sleep_ms(500)
-
-    print("WiFi ready")
-
-    # -----------------------------------------------------
     # Tasks
     # -----------------------------------------------------
 
@@ -2595,10 +2211,6 @@ async def main():
 
     asyncio.create_task(
         monitor_task()
-    )
-
-    asyncio.create_task(
-        web_server_task()
     )
 
     print()
