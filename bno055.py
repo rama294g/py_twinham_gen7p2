@@ -50,6 +50,18 @@ BNO_READ_COMPLETE = 1
 BNO_READ_TIMEOUT = 2
 
 
+def _find_rx_byte(value, start=0):
+
+    # MicroPython's bytearray.index() does not consistently accept an integer
+    # on all firmware builds.  Iterate explicitly so UART parsing behaves the
+    # same on RP2350 MicroPython and CPython.
+    for index in range(start, len(bno_rx_queue)):
+        if bno_rx_queue[index] == value:
+            return index
+
+    return -1
+
+
 def uart_clear(resync=False):
 
     # Clearing is deliberately restricted to startup or an explicit recovery.
@@ -82,9 +94,9 @@ def _take_bno_packet(expected_length):
     while True:
 
         # Discard only bytes which cannot start a read response.
-        try:
-            start_index = bno_rx_queue.index(0xBB)
-        except ValueError:
+        start_index = _find_rx_byte(0xBB)
+
+        if start_index < 0:
             bno_rx_queue[:] = b""
             return None
 
@@ -111,9 +123,9 @@ def _discard_incomplete_response():
 
     # At timeout the bytes belonging to this unfinished response are no longer
     # useful.  Do not flush hardware UART data or complete trailing packets.
-    try:
-        start_index = bno_rx_queue.index(0xBB)
-    except ValueError:
+    start_index = _find_rx_byte(0xBB)
+
+    if start_index < 0:
         bno_rx_queue[:] = b""
         return
 
@@ -126,9 +138,9 @@ def _discard_incomplete_response():
     if len(bno_rx_queue) < start_index + packet_length:
         # A later header may already begin a separate complete response.  Drop
         # only through the bytes of the timed-out fragment in that case.
-        try:
-            next_start = bno_rx_queue.index(0xBB, start_index + 2)
-        except ValueError:
+        next_start = _find_rx_byte(0xBB, start_index + 2)
+
+        if next_start < 0:
             del bno_rx_queue[:]
         else:
             del bno_rx_queue[:next_start]
@@ -347,5 +359,4 @@ def bno_init():
 
     print("NDOF MODE OK")
     return True
-
 
