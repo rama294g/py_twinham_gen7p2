@@ -51,12 +51,12 @@ TwinHAM は、手動車椅子を電動化するためのポン付けユニット
 
 Raspberry Pi Pico 2 W に対応する MicroPython ファームウェアをマイコンへ書き込みます。ファームウェアの書き込み方法は MicroPython または Raspberry Pi の公式手順を参照してください。
 
-### 2. `main.py` の転送
+### 2. プログラムファイルの転送
 
-USB で Pico 2 W を PC に接続し、`main.py` をマイコンのルートへコピーします。たとえば `mpremote` を使用する場合は、リポジトリのルートで次を実行します。
+USB で Pico 2 W を PC に接続し、`main.py` と同じ階層にある全ての `.py` ファイルをマイコンのルートへコピーします。たとえば `mpremote` を使用する場合は、リポジトリのルートで次を実行します。
 
 ```bash
-mpremote connect auto fs cp main.py :main.py
+for file in *.py; do mpremote connect auto fs cp "$file" ":$file"; done
 ```
 
 転送後、Pico 2 W を再起動します。
@@ -128,16 +128,23 @@ LCD には角度、PWM、センサー状態、スイッチ状態、ゼロ点、�
 
 ```text
 .
-├── main.py    # Pico 2 W で実行する制御プログラム
-└── README.md  # 本ドキュメント
+├── main.py          # アクチュエーションと composition root
+├── app_state.py     # 共通設定、実行時状態、純粋な補助関数
+├── bno055.py        # BNO055 UART 通信
+├── sensing.py       # センシング、角度推定
+├── lcd_menu.py      # LCD、ジョイスティックメニュー
+├── config_store.py  # config.json の保存と読み込み
+└── README.md        # 本ドキュメント
 ```
+
+`main.py` はアクチュエーションと安全停止を担当し、その他の機能モジュールを組み立てる composition root として機能します。
 
 ## 開発時の確認
 
 `main.py` は Pico 2 W のハードウェア API を起動時に使用するため、通常の CPython では実行できません。構文のみを確認する場合は、次のように実行できます。
 
 ```bash
-python -m py_compile main.py
+python -m py_compile *.py
 ```
 
 実機確認では、最低限次の項目を確認してください。
