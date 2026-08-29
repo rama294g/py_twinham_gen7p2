@@ -62,14 +62,29 @@ def _find_rx_byte(value, start=0):
     return -1
 
 
+def _drop_rx_prefix(length):
+
+    global bno_rx_queue
+
+    # Some MicroPython bytearray implementations do not support ``del`` for
+    # either individual items or slices.  Rebuild the queue instead, retaining
+    # any bytes which belong to a following UART response.
+    if length >= len(bno_rx_queue):
+        bno_rx_queue = bytearray()
+    elif length > 0:
+        bno_rx_queue = bytearray(bno_rx_queue[length:])
+
+
 def uart_clear(resync=False):
+
+    global bno_rx_queue
 
     # Clearing is deliberately restricted to startup or an explicit recovery.
     # Normal reads preserve both partial packets and following packets.
     if not resync:
         return
 
-    bno_rx_queue[:] = b""
+    bno_rx_queue = bytearray()
 
     while uart.any():
         uart.read()
@@ -97,11 +112,11 @@ def _take_bno_packet(expected_length):
         start_index = _find_rx_byte(0xBB)
 
         if start_index < 0:
-            bno_rx_queue[:] = b""
+            _drop_rx_prefix(len(bno_rx_queue))
             return None
 
         if start_index:
-            del bno_rx_queue[:start_index]
+            _drop_rx_prefix(start_index)
 
         if len(bno_rx_queue) < 2:
             return None
@@ -113,7 +128,7 @@ def _take_bno_packet(expected_length):
             return None
 
         payload = bytes(bno_rx_queue[2:packet_length])
-        del bno_rx_queue[:packet_length]
+        _drop_rx_prefix(packet_length)
 
         if payload_length == expected_length:
             return payload
@@ -126,11 +141,11 @@ def _discard_incomplete_response():
     start_index = _find_rx_byte(0xBB)
 
     if start_index < 0:
-        bno_rx_queue[:] = b""
+        _drop_rx_prefix(len(bno_rx_queue))
         return
 
     if len(bno_rx_queue) < start_index + 2:
-        del bno_rx_queue[:]
+        _drop_rx_prefix(len(bno_rx_queue))
         return
 
     packet_length = 2 + bno_rx_queue[start_index + 1]
@@ -141,9 +156,9 @@ def _discard_incomplete_response():
         next_start = _find_rx_byte(0xBB, start_index + 2)
 
         if next_start < 0:
-            del bno_rx_queue[:]
+            _drop_rx_prefix(len(bno_rx_queue))
         else:
-            del bno_rx_queue[:next_start]
+            _drop_rx_prefix(next_start)
 
 
 def bno_read(reg, length):
@@ -359,4 +374,3 @@ def bno_init():
 
     print("NDOF MODE OK")
     return True
-
