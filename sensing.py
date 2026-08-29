@@ -79,8 +79,8 @@ def update_angle(sensor, dt):
 
     tilt_observe = math.degrees(
         math.atan2(
-            -new_accy,
-            -new_accx
+            new_accy,
+            new_accx
         )
     )
 
@@ -133,7 +133,7 @@ def update_angle(sensor, dt):
 
     state.angle = (
         -state.lpf2_angle -
-        state.neutral
+        state.neutral * 0 - Config.NEUTRAL_ANG
     )
 
     state.angle = clamp(

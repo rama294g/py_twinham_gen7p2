@@ -4,10 +4,12 @@
 class Config:
 
     CONFIG_FILE = "config.json"
+    GAIN = 50
+    NEUTRAL_ANG = 30
     ANGLE_MIN = -90
     ANGLE_MAX = 90
-    PWM_MIN = -30
-    PWM_MAX = 30
+    PWM_MIN = -100
+    PWM_MAX = 100
     PWM_DEADBAND = 3
     MOTOR_PWM_FREQ = 5000
     CONTROL_INTERVAL_MS = 20
@@ -61,10 +63,12 @@ MENU_DISPLAY = 1
 MENU_SETTING = 2
 MENU_EDIT_LINE1 = 3
 MENU_EDIT_LINE2 = 4
-MENU_EDIT_PWM_MAX = 10
-MENU_EDIT_PWM_MIN = 11
-MENU_EDIT_ANG_MAX = 12
-MENU_EDIT_ANG_MIN = 13
+MENU_EDIT_GAIN     = 10
+MENU_EDIT_NEUTRAL = 11
+MENU_EDIT_PWM_MAX  = 12
+MENU_EDIT_PWM_MIN  = 13
+MENU_EDIT_ANG_MAX  = 14
+MENU_EDIT_ANG_MIN  = 15
 main_menu_items = ["SETTING", "DISPLAY", "RETURN"]
 display_menu_items = ["1stLine", "2ndLine", "RETURN"]
 display_value_items = [

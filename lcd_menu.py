@@ -5,7 +5,8 @@ from machine import ADC, I2C, Pin
 
 from app_state import (
     Config, MENU_DISPLAY, MENU_EDIT_ANG_MAX, MENU_EDIT_ANG_MIN,
-    MENU_EDIT_LINE1, MENU_EDIT_LINE2, MENU_EDIT_PWM_MAX, MENU_EDIT_PWM_MIN,
+    MENU_EDIT_LINE1, MENU_EDIT_LINE2,
+    MENU_EDIT_GAIN, MENU_EDIT_NEUTRAL, MENU_EDIT_PWM_MAX, MENU_EDIT_PWM_MIN,
     MENU_MAIN, MENU_SETTING, clamp, display_menu_items, display_value_items,
     main_menu_items, state,
 )
@@ -274,26 +275,37 @@ class MenuManager:
         # Edit values
         # -------------------------------------------------
 
-        if state.menu_level == MENU_EDIT_PWM_MAX:
-
-            if joy == "UP":
-                Config.PWM_MAX += 1
-            elif joy == "DOWN":
-                Config.PWM_MAX -= 1
-            elif joy == "RIGHT":
-                Config.PWM_MAX += 5
-            elif joy == "LEFT":
-                Config.PWM_MAX -= 5
+        if state.menu_level == MENU_EDIT_GAIN:
+            if joy == "UP":         Config.GAIN += 1
+            elif joy == "DOWN":     Config.GAIN -= 1
+            elif joy == "RIGHT":    Config.GAIN += 5
+            elif joy == "LEFT":     Config.GAIN -= 5
             elif joy == "CENTER":
-                Config.PWM_MAX = clamp(
-                    Config.PWM_MAX, 1, 100
-                )
                 save_config()
                 state.menu_level = MENU_SETTING
+            Config.GAIN = clamp(                Config.GAIN, 0, 100            )
+            return
 
-            Config.PWM_MAX = clamp(
-                Config.PWM_MAX, 1, 100
-            )
+        if state.menu_level == MENU_EDIT_NEUTRAL:
+            if joy == "UP":         Config.NEUTRAL += 1
+            elif joy == "DOWN":     Config.NEUTRAL -= 1
+            elif joy == "RIGHT":    Config.NEUTRAL += 5
+            elif joy == "LEFT":     Config.NEUTRAL -= 5
+            elif joy == "CENTER":
+                save_config()
+                state.menu_level = MENU_SETTING
+            Config.NEUTRAL = clamp(                Config.NEUTRAL, 10, 50            )
+            return
+
+        if state.menu_level == MENU_EDIT_PWM_MAX:
+            if joy == "UP":         Config.PWM_MAX += 1
+            elif joy == "DOWN":     Config.PWM_MAX -= 1
+            elif joy == "RIGHT":    Config.PWM_MAX += 5
+            elif joy == "LEFT":     Config.PWM_MAX -= 5
+            elif joy == "CENTER":
+                save_config()
+                state.menu_level = MENU_SETTING
+            Config.PWM_MAX = clamp(                Config.PWM_MAX, 1, 100            )
             return
 
         if state.menu_level == MENU_EDIT_PWM_MIN:
@@ -374,6 +386,8 @@ class MenuManager:
 
         elif state.menu_level == MENU_SETTING:
             current_menu = [
+                "GAIN",
+                "NEUTRAL",
                 "PWM_MAX",
                 "PWM_MIN",
                 "ANG_MAX",
@@ -429,6 +443,8 @@ class MenuManager:
             if state.menu_level in (
                 MENU_EDIT_LINE1,
                 MENU_EDIT_LINE2,
+                MENU_EDIT_GAIN,
+                MENU_EDIT_NEUTRAL,
                 MENU_EDIT_PWM_MAX,
                 MENU_EDIT_PWM_MIN,
                 MENU_EDIT_ANG_MAX,
@@ -508,6 +524,10 @@ class MenuManager:
 
         elif state.menu_level == MENU_SETTING:
 
+            if selected == "GAIN":
+                state.menu_level = MENU_EDIT_GAIN
+            if selected == "NEUTRAL":
+                state.menu_level = MENU_EDIT_NEUTRAL
             if selected == "PWM_MAX":
                 state.menu_level = MENU_EDIT_PWM_MAX
 
