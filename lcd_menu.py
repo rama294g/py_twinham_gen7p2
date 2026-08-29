@@ -8,7 +8,7 @@ from app_state import (
     MENU_EDIT_LINE1, MENU_EDIT_LINE2,
     MENU_EDIT_GAIN, MENU_EDIT_NEUTRAL, MENU_EDIT_PWM_MAX, MENU_EDIT_PWM_MIN,
     MENU_MAIN, MENU_SETTING, clamp, display_menu_items, display_value_items,
-    main_menu_items, state,
+    main_menu_items, setting_menu_items, state,
 )
 from config_store import save_config
 
@@ -276,25 +276,33 @@ class MenuManager:
         # -------------------------------------------------
 
         if state.menu_level == MENU_EDIT_GAIN:
-            if joy == "UP":         Config.GAIN += 1
-            elif joy == "DOWN":     Config.GAIN -= 1
-            elif joy == "RIGHT":    Config.GAIN += 5
-            elif joy == "LEFT":     Config.GAIN -= 5
+            if joy == "UP":
+                Config.GAIN += 1
+            elif joy == "DOWN":
+                Config.GAIN -= 1
+            elif joy == "RIGHT":
+                Config.GAIN += 5
+            elif joy == "LEFT":
+                Config.GAIN -= 5
             elif joy == "CENTER":
                 save_config()
                 state.menu_level = MENU_SETTING
-            Config.GAIN = clamp(                Config.GAIN, 0, 100            )
+            Config.GAIN = clamp(Config.GAIN, 0, 100)
             return
 
         if state.menu_level == MENU_EDIT_NEUTRAL:
-            if joy == "UP":         Config.NEUTRAL += 1
-            elif joy == "DOWN":     Config.NEUTRAL -= 1
-            elif joy == "RIGHT":    Config.NEUTRAL += 5
-            elif joy == "LEFT":     Config.NEUTRAL -= 5
+            if joy == "UP":
+                Config.NEUTRAL_ANG += 1
+            elif joy == "DOWN":
+                Config.NEUTRAL_ANG -= 1
+            elif joy == "RIGHT":
+                Config.NEUTRAL_ANG += 5
+            elif joy == "LEFT":
+                Config.NEUTRAL_ANG -= 5
             elif joy == "CENTER":
                 save_config()
                 state.menu_level = MENU_SETTING
-            Config.NEUTRAL = clamp(                Config.NEUTRAL, 10, 50            )
+            Config.NEUTRAL_ANG = clamp(Config.NEUTRAL_ANG, 10, 50)
             return
 
         if state.menu_level == MENU_EDIT_PWM_MAX:
@@ -385,16 +393,7 @@ class MenuManager:
             current_menu = display_menu_items
 
         elif state.menu_level == MENU_SETTING:
-            current_menu = [
-                "GAIN",
-                "NEUTRAL",
-                "PWM_MAX",
-                "PWM_MIN",
-                "ANG_MAX",
-                "ANG_MIN",
-                "RESET",
-                "RETURN"
-            ]
+            current_menu = setting_menu_items
 
         elif state.menu_level in (
             MENU_EDIT_LINE1,
@@ -526,9 +525,9 @@ class MenuManager:
 
             if selected == "GAIN":
                 state.menu_level = MENU_EDIT_GAIN
-            if selected == "NEUTRAL":
+            elif selected == "NEUTRAL":
                 state.menu_level = MENU_EDIT_NEUTRAL
-            if selected == "PWM_MAX":
+            elif selected == "PWM_MAX":
                 state.menu_level = MENU_EDIT_PWM_MAX
 
             elif selected == "PWM_MIN":
@@ -546,6 +545,8 @@ class MenuManager:
                 Config.PWM_MIN = -30
                 Config.ANGLE_MAX = 90
                 Config.ANGLE_MIN = -90
+                Config.GAIN = 50
+                Config.NEUTRAL_ANG = 30
 
                 state.line1_setting = 0
                 state.line2_setting = 1
@@ -619,7 +620,7 @@ async def display_task():
             elif state.menu_level == MENU_DISPLAY:
                 _menu_len = len(display_menu_items)
             elif state.menu_level == MENU_SETTING:
-                _menu_len = 6
+                _menu_len = len(setting_menu_items)
             elif state.menu_level in (MENU_EDIT_LINE1, MENU_EDIT_LINE2):
                 _menu_len = len(display_value_items)
             else:
@@ -652,18 +653,8 @@ async def display_task():
                 ]
 
             elif state.menu_level == MENU_SETTING:
-
-                items = [
-                    "PWM_MAX",
-                    "PWM_MIN",
-                    "ANG_MAX",
-                    "ANG_MIN",
-                    "RESET",
-                    "RETURN"
-                ]
-
                 line1 = "SETTING"
-                line2 = ">" + items[
+                line2 = ">" + setting_menu_items[
                     state.menu_index
                 ]
 
@@ -680,6 +671,16 @@ async def display_task():
                 line2 = ">" + display_value_items[
                     state.menu_index
                 ]
+
+            elif state.menu_level == MENU_EDIT_GAIN:
+
+                line1 = "GAIN"
+                line2 = ">" + str(Config.GAIN)
+
+            elif state.menu_level == MENU_EDIT_NEUTRAL:
+
+                line1 = "NEUTRAL"
+                line2 = ">" + str(Config.NEUTRAL_ANG)
 
             elif state.menu_level == MENU_EDIT_PWM_MAX:
 
@@ -746,5 +747,4 @@ async def display_task():
             state.last_line2 = line2
 
         await asyncio.sleep_ms(200)
-
 
