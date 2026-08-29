@@ -71,6 +71,10 @@ MENU_EDIT_ANG_MAX  = 14
 MENU_EDIT_ANG_MIN  = 15
 main_menu_items = ["SETTING", "DISPLAY", "RETURN"]
 display_menu_items = ["1stLine", "2ndLine", "RETURN"]
+setting_menu_items = [
+    "GAIN", "NEUTRAL", "PWM_MAX", "PWM_MIN",
+    "ANG_MAX", "ANG_MIN", "RESET", "RETURN"
+]
 display_value_items = [
     "ANGLE", "PWM", "SENSOR", "SWITCH", "ZERO", "JOY",
     "OBS", "KAL", "LPF", "GYRO", "ERROR"

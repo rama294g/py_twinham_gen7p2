@@ -8,6 +8,8 @@ def save_config():
     try:
 
         cfg = {
+            "GAIN": Config.GAIN,
+            "NEUTRAL_ANG": Config.NEUTRAL_ANG,
             "PWM_MAX": Config.PWM_MAX,
             "PWM_MIN": Config.PWM_MIN,
             "ANGLE_MAX": Config.ANGLE_MAX,
@@ -35,6 +37,12 @@ def load_config():
         with open(Config.CONFIG_FILE, "r") as f:
             cfg = ujson.load(f)
 
+        Config.GAIN = clamp(
+            int(cfg.get("GAIN", Config.GAIN)), 0, 100
+        )
+        Config.NEUTRAL_ANG = clamp(
+            int(cfg.get("NEUTRAL_ANG", Config.NEUTRAL_ANG)), 10, 50
+        )
         Config.PWM_MAX = clamp(
             int(cfg.get("PWM_MAX", 30)), 1, 100
         )
@@ -83,6 +91,7 @@ def load_config():
         Config.PWM_MIN = -30
         Config.ANGLE_MAX = 90
         Config.ANGLE_MIN = -90
+        Config.GAIN = 50
+        Config.NEUTRAL_ANG = 30
         state.line1_setting = 0
         state.line2_setting = 1
-
