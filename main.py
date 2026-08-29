@@ -601,79 +601,166 @@ uart = UART(
 print("UART INIT OK")
 
 
-def uart_clear():
+# Bytes and transaction state live across sensor-task iterations.  UART replies
+# commonly arrive in more than one scheduler step, so a step must never own a
+# temporary receive buffer.
+bno_rx_queue = bytearray()
+bno_read_pending = False
+bno_read_reg = None
+bno_read_length = 0
+bno_read_started_ms = 0
+
+BNO_READ_PENDING = 0
+BNO_READ_COMPLETE = 1
+BNO_READ_TIMEOUT = 2
+
+
+def uart_clear(resync=False):
+
+    # Clearing is deliberately restricted to startup or an explicit recovery.
+    # Normal reads preserve both partial packets and following packets.
+    if not resync:
+        return
+
+    bno_rx_queue[:] = b""
 
     while uart.any():
         uart.read()
 
 
+def _uart_receive_step():
+
+    # Check any() exactly once per polling step and never wait for input.
+    available = uart.any()
+
+    if available == 0:
+        return
+
+    chunk = uart.read(available)
+
+    if chunk:
+        bno_rx_queue.extend(chunk)
+
+
+def _take_bno_packet(expected_length):
+
+    while True:
+
+        # Discard only bytes which cannot start a read response.
+        try:
+            start_index = bno_rx_queue.index(0xBB)
+        except ValueError:
+            bno_rx_queue[:] = b""
+            return None
+
+        if start_index:
+            del bno_rx_queue[:start_index]
+
+        if len(bno_rx_queue) < 2:
+            return None
+
+        payload_length = bno_rx_queue[1]
+        packet_length = 2 + payload_length
+
+        if len(bno_rx_queue) < packet_length:
+            return None
+
+        payload = bytes(bno_rx_queue[2:packet_length])
+        del bno_rx_queue[:packet_length]
+
+        if payload_length == expected_length:
+            return payload
+
+
+def _discard_incomplete_response():
+
+    # At timeout the bytes belonging to this unfinished response are no longer
+    # useful.  Do not flush hardware UART data or complete trailing packets.
+    try:
+        start_index = bno_rx_queue.index(0xBB)
+    except ValueError:
+        bno_rx_queue[:] = b""
+        return
+
+    if len(bno_rx_queue) < start_index + 2:
+        del bno_rx_queue[:]
+        return
+
+    packet_length = 2 + bno_rx_queue[start_index + 1]
+
+    if len(bno_rx_queue) < start_index + packet_length:
+        # A later header may already begin a separate complete response.  Drop
+        # only through the bytes of the timed-out fragment in that case.
+        try:
+            next_start = bno_rx_queue.index(0xBB, start_index + 2)
+        except ValueError:
+            del bno_rx_queue[:]
+        else:
+            del bno_rx_queue[:next_start]
+
+
 def bno_read(reg, length):
 
-    uart_clear()
+    global bno_read_pending
+    global bno_read_reg
+    global bno_read_length
+    global bno_read_started_ms
 
-    uart.write(bytes([
-        0xAA,
-        0x01,
-        reg,
-        length
-    ]))
+    if not bno_read_pending:
 
-    expected = 2 + length
-    data = bytearray()
-    start = utime.ticks_ms()
+        uart.write(bytes([
+            0xAA,
+            0x01,
+            reg,
+            length
+        ]))
 
-    while len(data) < expected:
+        bno_read_pending = True
+        bno_read_reg = reg
+        bno_read_length = length
+        bno_read_started_ms = utime.ticks_ms()
 
-        if uart.any():
+    elif reg != bno_read_reg or length != bno_read_length:
+        # A caller cannot replace an in-flight transaction.
+        return BNO_READ_PENDING, None
 
-            chunk = uart.read()
+    _uart_receive_step()
 
-            if chunk:
-                data.extend(chunk)
+    payload = _take_bno_packet(length)
 
-        else:
+    if payload is not None:
+        bno_read_pending = False
+        return BNO_READ_COMPLETE, payload
 
-            if utime.ticks_diff(
-                utime.ticks_ms(),
-                start
-            ) > Config.UART_TIMEOUT_MS:
-                return None
+    if utime.ticks_diff(
+        utime.ticks_ms(),
+        bno_read_started_ms
+    ) > Config.UART_TIMEOUT_MS:
+        _discard_incomplete_response()
+        bno_read_pending = False
+        return BNO_READ_TIMEOUT, None
 
-            utime.sleep_ms(1)
+    return BNO_READ_PENDING, None
 
-    # Search for BB to re-synchronize if extra bytes arrived.
-    start_index = -1
 
-    for i in range(len(data)):
+def bno_read_blocking(reg, length):
 
-        if data[i] == 0xBB:
-            start_index = i
-            break
+    # Initialization runs before asyncio tasks start, so it may poll the same
+    # state machine while yielding briefly to the UART.
+    while True:
 
-    if start_index < 0:
-        return None
+        result, data = bno_read(reg, length)
 
-    if len(data) - start_index < 2:
-        return None
+        if result == BNO_READ_COMPLETE:
+            return data
 
-    rx_length = data[start_index + 1]
+        if result == BNO_READ_TIMEOUT:
+            return None
 
-    if rx_length != length:
-        return None
-
-    end_index = start_index + 2 + length
-
-    if len(data) < end_index:
-        return None
-
-    return bytes(
-        data[start_index + 2:end_index]
-    )
+        utime.sleep_ms(1)
 
 
 def bno_write(reg, value):
-
-    uart_clear()
 
     uart.write(bytes([
         0xAA,
@@ -711,13 +798,16 @@ def bno_write(reg, value):
 
 def read_acc_gyro():
 
-    data = bno_read(
+    result, data = bno_read(
         REG_SENSOR_DATA,
         SENSOR_DATA_LENGTH
     )
 
-    if data is None or len(data) != 18:
-        return None
+    if result != BNO_READ_COMPLETE:
+        return result, None
+
+    if len(data) != SENSOR_DATA_LENGTH:
+        return BNO_READ_TIMEOUT, None
 
     try:
 
@@ -746,9 +836,9 @@ def read_acc_gyro():
         )[0]
 
     except Exception:
-        return None
+        return BNO_READ_TIMEOUT, None
 
-    return (
+    return BNO_READ_COMPLETE, (
         acc_x_raw / ACC_SCALE,
         acc_y_raw / ACC_SCALE,
         acc_z_raw / ACC_SCALE,
@@ -1059,7 +1149,9 @@ def bno_init():
     print()
     print("CHECK CHIP ID")
 
-    chip_id = bno_read(
+    uart_clear(resync=True)
+
+    chip_id = bno_read_blocking(
         REG_CHIP_ID,
         1
     )
@@ -1092,7 +1184,7 @@ def bno_init():
 
     utime.sleep_ms(100)
 
-    mode = bno_read(
+    mode = bno_read_blocking(
         REG_OPR_MODE,
         1
     )
@@ -1539,37 +1631,7 @@ menu_manager = MenuManager()
 
 async def sensor_task():
 
-    # -----------------------------------------------------
-    # Initial read
-    # -----------------------------------------------------
-
-    sensor = read_acc_gyro()
-
-    if sensor is None:
-
-        state.sensor_ok = False
-        state.sensor_error_count = 1
-        state.total_sensor_errors += 1
-
-        print("INITIAL SENSOR READ ERROR")
-
-    else:
-
-        initial_angle = initialize_angle(sensor)
-
-        state.observed_angle = initial_angle
-        state.kalman_angle = initial_angle
-        state.lpf1_angle = initial_angle
-        state.lpf2_angle = initial_angle
-        state.angle = -initial_angle
-        state.sensor_ok = True
-        state.last_sensor_time = utime.ticks_ms()
-
-        print(
-            "INITIAL ANGLE = {:+.3f}".format(
-                state.angle
-            )
-        )
+    initialized = False
 
     # -----------------------------------------------------
     # 50Hz fixed-rate scheduler
@@ -1584,7 +1646,7 @@ async def sensor_task():
         SENSOR_PERIOD_US
     )
 
-    last_us = utime.ticks_us()
+    last_sample_us = utime.ticks_us()
     last_diag_ms = utime.ticks_ms()
 
     while True:
@@ -1606,15 +1668,6 @@ async def sensor_task():
 
         now_us = utime.ticks_us()
 
-        dt = (
-            utime.ticks_diff(
-                now_us,
-                last_us
-            ) / 1000000.0
-        )
-
-        last_us = now_us
-
         # 次回時刻を20ms進める
         next_sample_us = utime.ticks_add(
             next_sample_us,
@@ -1635,15 +1688,15 @@ async def sensor_task():
                 SENSOR_PERIOD_US
             )
 
-        if dt <= 0.0:
-            dt = 0.001
+        read_result, sensor = read_acc_gyro()
 
-        if dt > 0.1:
-            dt = 0.1
+        if read_result == BNO_READ_PENDING:
 
-        sensor = read_acc_gyro()
+            # A normal scheduler step with no bytes (or only part of a reply)
+            # is not a sensor error.  The persistent queue is polled next step.
+            continue
 
-        if sensor is None:
+        if read_result == BNO_READ_TIMEOUT:
 
             # -------------------------------------------------
             # Keep the last valid sensor/angle value.
@@ -1680,6 +1733,37 @@ async def sensor_task():
             # unchanged here.
             # エラー時も次回の20msスケジュールへ進む
             continue
+
+        sample_us = utime.ticks_us()
+        dt = (
+            utime.ticks_diff(
+                sample_us,
+                last_sample_us
+            ) / 1000000.0
+        )
+        last_sample_us = sample_us
+
+        if dt <= 0.0:
+            dt = 0.001
+
+        if dt > 0.1:
+            dt = 0.1
+
+        if not initialized:
+
+            initial_angle = initialize_angle(sensor)
+            state.observed_angle = initial_angle
+            state.kalman_angle = initial_angle
+            state.lpf1_angle = initial_angle
+            state.lpf2_angle = initial_angle
+            state.angle = -initial_angle
+            initialized = True
+
+            print(
+                "INITIAL ANGLE = {:+.3f}".format(
+                    state.angle
+                )
+            )
 
         state.sensor_error_count = 0
         state.sensor_ok = True
