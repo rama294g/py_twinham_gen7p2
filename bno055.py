@@ -48,6 +48,7 @@ bno_read_started_ms = 0
 BNO_READ_PENDING = 0
 BNO_READ_COMPLETE = 1
 BNO_READ_TIMEOUT = 2
+BNO_READ_DATALEN_UNMATCH = 3
 
 
 def _find_rx_byte(value, start=0):
@@ -269,7 +270,7 @@ def read_acc_gyro():
         return result, None
 
     if len(data) != SENSOR_DATA_LENGTH:
-        return BNO_READ_TIMEOUT, None
+        return BNO_READ_DATALEN_UNMATCH, None
 
     try:
 

@@ -4,7 +4,12 @@ import uasyncio as asyncio
 import utime
 
 from app_state import Config, clamp, fitin360, state
-from bno055 import BNO_READ_PENDING, BNO_READ_TIMEOUT, read_acc_gyro
+from bno055 import (
+    BNO_READ_DATALEN_UNMATCH,
+    BNO_READ_PENDING,
+    BNO_READ_TIMEOUT,
+    read_acc_gyro
+)
 
 Q1_RAD = math.radians(Config.Q1_DEG)
 COS_Q1 = math.cos(Q1_RAD)
@@ -211,7 +216,10 @@ async def sensor_task():
             # is not a sensor error.  The persistent queue is polled next step.
             continue
 
-        if read_result == BNO_READ_TIMEOUT:
+        if read_result in (
+            BNO_READ_TIMEOUT,
+            BNO_READ_DATALEN_UNMATCH
+        ):
 
             # -------------------------------------------------
             # Keep the last valid sensor/angle value.
@@ -221,9 +229,15 @@ async def sensor_task():
             state.sensor_error_count += 1
             state.total_sensor_errors += 1
 
+            if read_result == BNO_READ_DATALEN_UNMATCH:
+                error_name = "DATALEN UNMATCH"
+            else:
+                error_name = "TIMEOUT"
+
             print(
-                "SENSOR READ ERROR count={} total={} "
+                "SENSOR READ {} count={} total={} "
                 "ANGLE HOLD={:+.1f}".format(
+                    error_name,
                     state.sensor_error_count,
                     state.total_sensor_errors,
                     state.angle
