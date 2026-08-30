@@ -399,6 +399,7 @@ async def monitor_task():
 def bno055_rx_chip_id(_chip_id):
     global m_chip_id
     m_chip_id = _chip_id
+    print("BNO055 chip id = 0x{:02X}".format(m_chip_id))
 
 
 def bno055_rx_gyro(_accx, _accy, _accz, _gyrox, _gyroy, _gyroz):
@@ -422,6 +423,7 @@ def bno055_rx_gyro(_accx, _accy, _accz, _gyrox, _gyroy, _gyroz):
 
     sensor = (m_accx, m_accy, m_accz, m_gyrox, m_gyroy, m_gyroz)
     update_angle(sensor, dt)
+    print(sensor.angle)
     state.sensor_error_count = 0
     state.sensor_ok = True
     state.last_sensor_time = utime.ticks_ms()
@@ -437,6 +439,7 @@ async def check_bno055_chip_id(timeout_ms=500):
         if utime.ticks_diff(utime.ticks_ms(), started) > timeout_ms:
             return False
         await asyncio.sleep_ms(10)
+        
     return m_chip_id == 0xA0
 
 
