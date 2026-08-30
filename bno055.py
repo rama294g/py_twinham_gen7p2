@@ -95,7 +95,7 @@ class BNO055:
         return True, data_len - packet_len
 
     def parse_packet(self, packet, packet_len):
-        if packet_len == 20 and packet[8:14] == b"\x00" * 6:
+        if packet_len == 20: # and packet[8:14] == b"\x00" * 6:
             values = struct.unpack_from("<9h", packet, 2)
             accx = values[0] * 0.001 * 9.801
             accy = values[1] * 0.001 * 9.801
