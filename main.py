@@ -13,7 +13,7 @@ from app_state import Config, MENU_MAIN, clamp, state
 from bno055 import BNO055
 from config_store import load_config
 from lcd_menu import display_task, joystick_task, lcd_print
-from sensing import update_angle #configure_sensor, receive_sensor_sample, sensor_task
+from sensing import update_angle
 
 m_gyro2 = BNO055(Pin(4), Pin(5))
 m_chip_id = None
@@ -23,6 +23,7 @@ m_accz = 0.0
 m_gyrox = 0.0
 m_gyroy = 0.0
 m_gyroz = 0.0
+last_sensor_us = None
 
 gc.collect()
 led = Pin("LED", Pin.OUT)
@@ -212,6 +213,10 @@ async def control_task():
 
         try:
 
+            # The UART interrupt parses the response and invokes
+            # bno055_rx_gyro; no separate asynchronous sensing task is needed.
+            m_gyro2.tx_GET_ACCGYRO()
+
             # -------------------------------------------------
             # Menu mode: motor must stop.
             # -------------------------------------------------
@@ -283,9 +288,6 @@ async def control_task():
             # -------------------------------------------------
             # Angle -> PWM
             # -------------------------------------------------
-            m_gyro2.tx_GET_ACCGYRO();
-            sensor = (m_accx, m_accy, m_accz)
-            update_angle(sensor, dt)
             diff = clamp(
                 state.angle,
                 Config.ANGLE_MIN,
@@ -400,6 +402,7 @@ def bno055_rx_chip_id(_chip_id):
 
 
 def bno055_rx_gyro(_accx, _accy, _accz, _gyrox, _gyroy, _gyroz):
+    global last_sensor_us
     global m_accx, m_accy, m_accz
     global m_gyrox, m_gyroy, m_gyroz
     m_accx = _accx
@@ -408,9 +411,20 @@ def bno055_rx_gyro(_accx, _accy, _accz, _gyrox, _gyroy, _gyroz):
     m_gyrox = _gyrox * (180.0 / math.pi)
     m_gyroy = _gyroy * (180.0 / math.pi)
     m_gyroz = _gyroz * (180.0 / math.pi)
-    receive_sensor_sample(
-        m_accx, m_accy, m_accz, m_gyrox, m_gyroy, m_gyroz
-    )
+
+    now_us = utime.ticks_us()
+    if last_sensor_us is None:
+        dt = Config.SENSOR_INTERVAL_MS / 1000.0
+    else:
+        dt = utime.ticks_diff(now_us, last_sensor_us) / 1000000.0
+        dt = clamp(dt, 0.001, 0.1)
+    last_sensor_us = now_us
+
+    sensor = (m_accx, m_accy, m_accz, m_gyrox, m_gyroy, m_gyroz)
+    update_angle(sensor, dt)
+    state.sensor_error_count = 0
+    state.sensor_ok = True
+    state.last_sensor_time = utime.ticks_ms()
 
 
 async def check_bno055_chip_id(timeout_ms=500):
@@ -453,7 +467,6 @@ async def main():
     # -----------------------------------------------------
     delay = 10
     m_gyro2.attach_rx_callback(bno055_rx_gyro, bno055_rx_chip_id)
-    configure_sensor(m_gyro2.tx_GET_ACCGYRO)
     if not await check_bno055_chip_id():
         lcd_print("BNO ERR", 0)
         lcd_print("CHECK", 1)
@@ -476,10 +489,6 @@ async def main():
     # -----------------------------------------------------
     # Tasks
     # -----------------------------------------------------
-
-    #asyncio.create_task(
-    #    sensor_task()
-    #)
 
     asyncio.create_task(
         switch_task()
