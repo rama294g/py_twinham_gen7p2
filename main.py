@@ -424,28 +424,25 @@ def bno055_rx_gyro(_accx, _accy, _accz, _gyrox, _gyroy, _gyroz):
         if len(sensor_dt_samples_ms) > 10:
             sensor_dt_samples_ms.pop(0)
         average_dt_ms = sum(sensor_dt_samples_ms) / len(sensor_dt_samples_ms)
-        print(
-            "BNO055 delta t = {:.3f} ms, 10-call average = {:.3f} ms".format(
-                measured_dt_ms,
-                average_dt_ms,
-            )
-        )
-
         dt = measured_dt_us / 1000000.0
         dt = clamp(dt, 0.001, 0.1)
     last_sensor_us = now_us
 
     sensor = (m_accx, m_accy, m_accz, m_gyrox, m_gyroy, m_gyroz)
-    try:
-        update_angle(sensor, dt)
-        print("ANGLE = {:.3f}".format(state.angle))
-        state.sensor_error_count = 0
-        state.sensor_ok = True
-        state.last_sensor_time = utime.ticks_ms()
-    except Exception as e:
-        state.sensor_error_count += 1
-        state.total_sensor_errors += 1
-        print("BNO055 UPDATE ERROR:", e)
+    #try:
+    update_angle(sensor, dt)
+    print("dt = {:.1f}, dt_ave = {:.1f} ms, ang = {:.1f} deg".format(                                                                                
+        measured_dt_ms,
+        average_dt_ms,
+        state.angle,
+        ))
+    state.sensor_error_count = 0
+    state.sensor_ok = True
+    state.last_sensor_time = utime.ticks_ms()
+    #except Exception as e:
+    #    state.sensor_error_count += 1
+    #    state.total_sensor_errors += 1
+    #    print("BNO055 UPDATE ERROR:", e)
 
 
 async def check_bno055_chip_id(timeout_ms=500):
