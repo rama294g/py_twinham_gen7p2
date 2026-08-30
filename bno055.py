@@ -1,7 +1,7 @@
-"""BNO055 UART protocol and device initialization."""
+"""Interrupt-driven BNO055 UART protocol for Raspberry Pi Pico 2 W."""
 import struct
 import utime
-from machine import Pin, UART
+from machine import Pin, UART, disable_irq, enable_irq
 
 from app_state import Config
 
@@ -21,29 +21,11 @@ MODE_NDOF = 0x0C
 ACC_SCALE = 100.0
 GYRO_SCALE = 16.0
 
-print("UART INIT")
-
-uart = UART(
-    UART_ID,
-    baudrate=UART_BAUDRATE,
-    bits=8,
-    parity=None,
-    stop=1,
-    tx=Pin(UART_TX_PIN),
-    rx=Pin(UART_RX_PIN)
-)
-
-print("UART INIT OK")
-
-
-# Bytes and transaction state live across sensor-task iterations.  UART replies
-# commonly arrive in more than one scheduler step, so a step must never own a
-# temporary receive buffer.
-bno_rx_queue = bytearray()
-bno_read_pending = False
-bno_read_reg = None
-bno_read_length = 0
-bno_read_started_ms = 0
+# The old mbed driver reserved 200 bytes.  Power-of-two rings make full/empty
+# handling cheap in an interrupt while retaining ample room for BNO055 packets.
+UART_RX_BUFFER_SIZE = 256
+UART_TX_BUFFER_SIZE = 256
+UART_BUFFER_MASK = UART_RX_BUFFER_SIZE - 1
 
 BNO_READ_PENDING = 0
 BNO_READ_COMPLETE = 1
@@ -51,327 +33,265 @@ BNO_READ_TIMEOUT = 2
 BNO_READ_DATALEN_UNMATCH = 3
 
 
-def _find_rx_byte(value, start=0):
+class InterruptUART:
+    """Fixed-buffer UART transport driven by RX and TX interrupt callbacks."""
 
-    # MicroPython's bytearray.index() does not consistently accept an integer
-    # on all firmware builds.  Iterate explicitly so UART parsing behaves the
-    # same on RP2350 MicroPython and CPython.
-    for index in range(start, len(bno_rx_queue)):
-        if bno_rx_queue[index] == value:
-            return index
+    def __init__(self):
+        self.uart = UART(
+            UART_ID,
+            baudrate=UART_BAUDRATE,
+            bits=8,
+            parity=None,
+            stop=1,
+            tx=Pin(UART_TX_PIN),
+            rx=Pin(UART_RX_PIN),
+            rxbuf=UART_RX_BUFFER_SIZE,
+            txbuf=UART_TX_BUFFER_SIZE
+        )
+        self.rx_buffer = bytearray(UART_RX_BUFFER_SIZE)
+        self.tx_buffer = bytearray(UART_TX_BUFFER_SIZE)
+        self.rx_head = 0
+        self.rx_tail = 0
+        self.tx_head = 0
+        self.tx_tail = 0
+        self.rx_overflow = False
+        self.tx_overflow = False
+        self._rx_byte = bytearray(1)
+        self._tx_byte = bytearray(1)
 
-    return -1
+        # Pico/RP2350 supports RX-idle and TX-idle UART events.  The callback is
+        # a soft IRQ so the MicroPython UART methods are safe to call from it.
+        trigger = UART.IRQ_RXIDLE | UART.IRQ_TXIDLE
+        self.uart.irq(self._uart_irq, trigger=trigger, hard=False)
+
+    def _uart_irq(self, uart):
+        self._receive_irq(uart)
+        self._transmit_irq(uart)
+
+    def _receive_irq(self, uart):
+        while uart.any():
+            if uart.readinto(self._rx_byte, 1) != 1:
+                break
+            next_head = (self.rx_head + 1) & UART_BUFFER_MASK
+            if next_head == self.rx_tail:
+                self.rx_overflow = True
+                break
+            self.rx_buffer[self.rx_head] = self._rx_byte[0]
+            self.rx_head = next_head
+
+    def _transmit_irq(self, uart):
+        # Send one byte per TX event, as in ref/cpp_sample/BNO055.h.  Calling
+        # this once when queueing data starts transmission immediately.
+        if self.tx_tail == self.tx_head:
+            return
+        self._tx_byte[0] = self.tx_buffer[self.tx_tail]
+        if uart.write(self._tx_byte) == 1:
+            self.tx_tail = (self.tx_tail + 1) & UART_BUFFER_MASK
+
+    def write(self, data):
+        irq_state = disable_irq()
+        was_empty = self.tx_head == self.tx_tail
+        used = (self.tx_head - self.tx_tail) & UART_BUFFER_MASK
+        free = UART_TX_BUFFER_SIZE - 1 - used
+        if len(data) > free:
+            self.tx_overflow = True
+            enable_irq(irq_state)
+            return False
+        for value in data:
+            next_head = (self.tx_head + 1) & UART_BUFFER_MASK
+            self.tx_buffer[self.tx_head] = value
+            self.tx_head = next_head
+        enable_irq(irq_state)
+
+        if was_empty:
+            self._transmit_irq(self.uart)
+        return True
+
+    def read_byte(self):
+        irq_state = disable_irq()
+        if self.rx_tail == self.rx_head:
+            enable_irq(irq_state)
+            return None
+        value = self.rx_buffer[self.rx_tail]
+        self.rx_tail = (self.rx_tail + 1) & UART_BUFFER_MASK
+        enable_irq(irq_state)
+        return value
+
+    def clear(self):
+        irq_state = disable_irq()
+        self.rx_tail = self.rx_head
+        self.rx_overflow = False
+        enable_irq(irq_state)
+        while self.uart.any():
+            self.uart.readinto(self._rx_byte, 1)
 
 
-def _drop_rx_prefix(length):
+print("UART INIT")
+transport = InterruptUART()
+print("UART INIT OK")
 
-    global bno_rx_queue
+# Packet assembly happens outside IRQ context.  It is also fixed-size so a
+# disconnected or noisy sensor cannot consume the Pico's heap indefinitely.
+packet_buffer = bytearray(UART_RX_BUFFER_SIZE)
+packet_length = 0
+bno_read_pending = False
+bno_read_reg = None
+bno_read_length = 0
+bno_read_started_ms = 0
 
-    # Some MicroPython bytearray implementations do not support ``del`` for
-    # either individual items or slices.  Rebuild the queue instead, retaining
-    # any bytes which belong to a following UART response.
-    if length >= len(bno_rx_queue):
-        bno_rx_queue = bytearray()
-    elif length > 0:
-        bno_rx_queue = bytearray(bno_rx_queue[length:])
+
+def _receive_packets():
+    global packet_length
+    while True:
+        value = transport.read_byte()
+        if value is None:
+            return
+        if packet_length < UART_RX_BUFFER_SIZE:
+            packet_buffer[packet_length] = value
+            packet_length += 1
+        else:
+            # Retain the newest possible header and report a recoverable fault.
+            packet_length = 1 if value == 0xBB else 0
+            if packet_length:
+                packet_buffer[0] = value
+            transport.rx_overflow = True
+
+
+def _drop_packet_prefix(count):
+    global packet_length
+    remaining = packet_length - count
+    if remaining > 0:
+        packet_buffer[:remaining] = packet_buffer[count:packet_length]
+    packet_length = max(0, remaining)
+
+
+def _take_response(expected_length):
+    """Return ``(header, body)`` for one complete BNO055 response."""
+    while packet_length:
+        header = packet_buffer[0]
+        if header == 0xEE:
+            if packet_length < 2:
+                return None
+            response = bytes(packet_buffer[:2])
+            _drop_packet_prefix(2)
+            return 0xEE, response
+        if header != 0xBB:
+            _drop_packet_prefix(1)
+            continue
+        if packet_length < 2:
+            return None
+        response_length = packet_buffer[1]
+        total_length = response_length + 2
+        if packet_length < total_length:
+            return None
+        payload = bytes(packet_buffer[2:total_length])
+        _drop_packet_prefix(total_length)
+        return 0xBB, payload
+    return None
 
 
 def uart_clear(resync=False):
-
-    global bno_rx_queue
-
-    # Clearing is deliberately restricted to startup or an explicit recovery.
-    # Normal reads preserve both partial packets and following packets.
-    if not resync:
-        return
-
-    bno_rx_queue = bytearray()
-
-    while uart.any():
-        uart.read()
-
-
-def _uart_receive_step():
-
-    # Check any() exactly once per polling step and never wait for input.
-    available = uart.any()
-
-    if available == 0:
-        return
-
-    chunk = uart.read(available)
-
-    if chunk:
-        bno_rx_queue.extend(chunk)
-
-
-def _take_bno_packet(expected_length):
-
-    while True:
-
-        # Discard only bytes which cannot start a read response.
-        start_index = _find_rx_byte(0xBB)
-
-        if start_index < 0:
-            _drop_rx_prefix(len(bno_rx_queue))
-            return None
-
-        if start_index:
-            _drop_rx_prefix(start_index)
-
-        if len(bno_rx_queue) < 2:
-            return None
-
-        payload_length = bno_rx_queue[1]
-        packet_length = 2 + payload_length
-
-        if len(bno_rx_queue) < packet_length:
-            return None
-
-        payload = bytes(bno_rx_queue[2:packet_length])
-        _drop_rx_prefix(packet_length)
-
-        if payload_length == expected_length:
-            return payload
-
-
-def _discard_incomplete_response():
-
-    # At timeout the bytes belonging to this unfinished response are no longer
-    # useful.  Do not flush hardware UART data or complete trailing packets.
-    start_index = _find_rx_byte(0xBB)
-
-    if start_index < 0:
-        _drop_rx_prefix(len(bno_rx_queue))
-        return
-
-    if len(bno_rx_queue) < start_index + 2:
-        _drop_rx_prefix(len(bno_rx_queue))
-        return
-
-    packet_length = 2 + bno_rx_queue[start_index + 1]
-
-    if len(bno_rx_queue) < start_index + packet_length:
-        # A later header may already begin a separate complete response.  Drop
-        # only through the bytes of the timed-out fragment in that case.
-        next_start = _find_rx_byte(0xBB, start_index + 2)
-
-        if next_start < 0:
-            _drop_rx_prefix(len(bno_rx_queue))
-        else:
-            _drop_rx_prefix(next_start)
+    global packet_length
+    if resync:
+        transport.clear()
+        packet_length = 0
 
 
 def bno_read(reg, length):
-
-    global bno_read_pending
-    global bno_read_reg
-    global bno_read_length
-    global bno_read_started_ms
-
+    global bno_read_pending, bno_read_reg, bno_read_length, bno_read_started_ms
     if not bno_read_pending:
-
-        uart.write(bytes([
-            0xAA,
-            0x01,
-            reg,
-            length
-        ]))
-
+        if not transport.write(bytes((0xAA, 0x01, reg, length))):
+            return BNO_READ_TIMEOUT, None
         bno_read_pending = True
         bno_read_reg = reg
         bno_read_length = length
         bno_read_started_ms = utime.ticks_ms()
-
     elif reg != bno_read_reg or length != bno_read_length:
-        # A caller cannot replace an in-flight transaction.
         return BNO_READ_PENDING, None
 
-    _uart_receive_step()
-
-    payload = _take_bno_packet(length)
-
-    if payload is not None:
+    _receive_packets()
+    response = _take_response(length)
+    if response is not None and response[0] == 0xBB:
         bno_read_pending = False
-        return BNO_READ_COMPLETE, payload
-
-    if utime.ticks_diff(
-        utime.ticks_ms(),
-        bno_read_started_ms
-    ) > Config.UART_TIMEOUT_MS:
-        _discard_incomplete_response()
+        if len(response[1]) != length:
+            return BNO_READ_DATALEN_UNMATCH, None
+        return BNO_READ_COMPLETE, response[1]
+    if utime.ticks_diff(utime.ticks_ms(), bno_read_started_ms) > Config.UART_TIMEOUT_MS:
         bno_read_pending = False
+        uart_clear(resync=True)
         return BNO_READ_TIMEOUT, None
-
     return BNO_READ_PENDING, None
 
 
 def bno_read_blocking(reg, length):
-
-    # Initialization runs before asyncio tasks start, so it may poll the same
-    # state machine while yielding briefly to the UART.
     while True:
-
         result, data = bno_read(reg, length)
-
         if result == BNO_READ_COMPLETE:
             return data
-
         if result == BNO_READ_TIMEOUT:
             return None
-
         utime.sleep_ms(1)
 
 
 def bno_write(reg, value):
-
-    uart.write(bytes([
-        0xAA,
-        0x00,
-        reg,
-        0x01,
-        value
-    ]))
-
-    start = utime.ticks_ms()
-
-    while uart.any() == 0:
-
-        if utime.ticks_diff(
-            utime.ticks_ms(),
-            start
-        ) > Config.UART_TIMEOUT_MS:
-            return False
-
-        utime.sleep_ms(1)
-
-    utime.sleep_ms(2)
-
-    data = uart.read()
-
-    if data is None:
+    if not transport.write(bytes((0xAA, 0x00, reg, 0x01, value))):
         return False
-
-    return (
-        len(data) >= 2 and
-        data[0] == 0xEE and
-        data[1] == 0x01
-    )
+    start = utime.ticks_ms()
+    while utime.ticks_diff(utime.ticks_ms(), start) <= Config.UART_TIMEOUT_MS:
+        _receive_packets()
+        response = _take_response(0)
+        if response is not None:
+            return (
+                response[0] == 0xEE and
+                len(response[1]) == 2 and
+                response[1][1] == 0x01
+            )
+        utime.sleep_ms(1)
+    uart_clear(resync=True)
+    return False
 
 
 def read_acc_gyro():
-
-    result, data = bno_read(
-        REG_SENSOR_DATA,
-        SENSOR_DATA_LENGTH
-    )
-
+    result, data = bno_read(REG_SENSOR_DATA, SENSOR_DATA_LENGTH)
     if result != BNO_READ_COMPLETE:
         return result, None
-
     if len(data) != SENSOR_DATA_LENGTH:
         return BNO_READ_DATALEN_UNMATCH, None
-
-    try:
-
-        acc_x_raw = struct.unpack(
-            "<h", data[0:2]
-        )[0]
-
-        acc_y_raw = struct.unpack(
-            "<h", data[2:4]
-        )[0]
-
-        acc_z_raw = struct.unpack(
-            "<h", data[4:6]
-        )[0]
-
-        gyro_x_raw = struct.unpack(
-            "<h", data[12:14]
-        )[0]
-
-        gyro_y_raw = struct.unpack(
-            "<h", data[14:16]
-        )[0]
-
-        gyro_z_raw = struct.unpack(
-            "<h", data[16:18]
-        )[0]
-
-    except Exception:
-        return BNO_READ_TIMEOUT, None
-
+    values = struct.unpack("<9h", data)
     return BNO_READ_COMPLETE, (
-        acc_x_raw / ACC_SCALE,
-        acc_y_raw / ACC_SCALE,
-        acc_z_raw / ACC_SCALE,
-        gyro_x_raw / GYRO_SCALE,
-        gyro_y_raw / GYRO_SCALE,
-        gyro_z_raw / GYRO_SCALE
+        values[0] / ACC_SCALE,
+        values[1] / ACC_SCALE,
+        values[2] / ACC_SCALE,
+        values[6] / GYRO_SCALE,
+        values[7] / GYRO_SCALE,
+        values[8] / GYRO_SCALE
     )
-
 
 
 def bno_init():
-
-    print()
-    print("CHECK CHIP ID")
-
+    print("\nCHECK CHIP ID")
     uart_clear(resync=True)
-
-    chip_id = bno_read_blocking(
-        REG_CHIP_ID,
-        1
-    )
-
+    chip_id = bno_read_blocking(REG_CHIP_ID, 1)
     if chip_id is None:
-
         print("CHIP ID READ ERROR")
         return False
-
-    print(
-        "CHIP ID = 0x{:02X}".format(
-            chip_id[0]
-        )
-    )
-
+    print("CHIP ID = 0x{:02X}".format(chip_id[0]))
     if chip_id[0] != BNO_CHIP_ID:
-
         print("INVALID CHIP ID")
         return False
 
     print("SET NDOF")
-
-    write_ok = bno_write(
-        REG_OPR_MODE,
-        MODE_NDOF
-    )
-
-    if not write_ok:
+    if not bno_write(REG_OPR_MODE, MODE_NDOF):
         print("NDOF WRITE ERROR")
-
+        return False
     utime.sleep_ms(100)
-
-    mode = bno_read_blocking(
-        REG_OPR_MODE,
-        1
-    )
-
+    mode = bno_read_blocking(REG_OPR_MODE, 1)
     if mode is None:
-
         print("OPR_MODE READ ERROR")
         return False
-
-    print(
-        "OPR_MODE = 0x{:02X}".format(
-            mode[0]
-        )
-    )
-
+    print("OPR_MODE = 0x{:02X}".format(mode[0]))
     if mode[0] != MODE_NDOF:
-
         print("NDOF MODE ERROR")
         return False
-
     print("NDOF MODE OK")
     return True
