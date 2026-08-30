@@ -3,17 +3,26 @@
 Hardware drivers and application tasks live in feature-specific modules; this
 module only wires them together and owns application startup/shutdown.
 """
+import math
 import gc
 import uasyncio as asyncio
 import utime
 from machine import Pin, PWM
 
 from app_state import Config, MENU_MAIN, clamp, state
-from bno055 import bno_init
+from bno055 import BNO055
 from config_store import load_config
 from lcd_menu import display_task, joystick_task, lcd_print
 from sensing import sensor_task
 
+m_gyro2 = BNO055(Pin(4), Pin(5))
+m_chip_id = None
+m_accx = 0.0
+m_accy = 0.0
+m_accz = 0.0
+m_gyrox = 0.0
+m_gyroy = 0.0
+m_gyroz = 0.0
 
 gc.collect()
 led = Pin("LED", Pin.OUT)
@@ -383,6 +392,20 @@ async def monitor_task():
         await asyncio.sleep_ms(1000)
 
 
+async def bno055_rx_chip_id(_chip_id):
+    global m_chip_id
+    m_chip_id = _chip_id
+
+
+async def bno055_rx_gyro(_accx, _accy, _accz, _gyrox, _gyroy, _gyroz):
+    global m_accx, m_accy, m_accz
+    global m_gyrox, m_gyroy, m_gyroz
+    m_accx = _accx
+    m_accy = _accy
+    m_accz = _accz
+    m_gyrox = _gyrox * (180.0 / math.pi)
+    m_gyroy = _gyroy * (180.0 / math.pi)
+    m_gyroz = _gyroz * (180.0 / math.pi)
 
 
 async def main():
@@ -410,7 +433,16 @@ async def main():
     # -----------------------------------------------------
     # BNO055
     # -----------------------------------------------------
-
+    delay = 10
+    m_gyro2.attach_rx_callback(bno055_rx_gyro, bno055_rx_chip_id)
+    await asyncio.sleep_ms(delay)
+    m_gyro2.tx_CHIP_ID()
+    await asyncio.sleep_ms(delay)
+    m_gyro2.tx_OPR_MODE()
+    await asyncio.sleep_ms(delay)
+    await asyncio.sleep_ms(1500)
+    m_gyro2.tx_CHIP_ID()
+    await asyncio.sleep_ms(delay)
     if not bno_init():
 
         lcd_print("BNO ERR", 0)

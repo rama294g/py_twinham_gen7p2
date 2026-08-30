@@ -1,16 +1,9 @@
-"""MicroPython port of ``ref/cpp_sample/BNO055.h`` for Pico 2 W.
-
-The BNO055 is connected in UART mode.  ``tx`` and ``rx`` are Pico GPIO
-numbers (or ``machine.Pin`` objects), not the sensor's pin names.
-"""
 
 import struct
-
 from machine import Pin, UART
 
 
 class BNO055:
-    """BNO055 UART driver retaining the interface of the C++ sample."""
 
     _BUFFER_SIZE = 200
 

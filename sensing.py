@@ -4,12 +4,12 @@ import uasyncio as asyncio
 import utime
 
 from app_state import Config, clamp, fitin360, state
-from bno055 import (
-    BNO_READ_DATALEN_UNMATCH,
-    BNO_READ_PENDING,
-    BNO_READ_TIMEOUT,
-    read_acc_gyro
-)
+#from bno055 import (
+#    BNO_READ_DATALEN_UNMATCH,
+#    BNO_READ_PENDING,
+#    BNO_READ_TIMEOUT,
+#    read_acc_gyro
+#)
 
 Q1_RAD = math.radians(Config.Q1_DEG)
 COS_Q1 = math.cos(Q1_RAD)
