@@ -422,11 +422,16 @@ def bno055_rx_gyro(_accx, _accy, _accz, _gyrox, _gyroy, _gyroz):
     last_sensor_us = now_us
 
     sensor = (m_accx, m_accy, m_accz, m_gyrox, m_gyroy, m_gyroz)
-    update_angle(sensor, dt)
-    print(sensor.angle)
-    state.sensor_error_count = 0
-    state.sensor_ok = True
-    state.last_sensor_time = utime.ticks_ms()
+    try:
+        update_angle(sensor, dt)
+        print("ANGLE = {:.3f}".format(state.angle))
+        state.sensor_error_count = 0
+        state.sensor_ok = True
+        state.last_sensor_time = utime.ticks_ms()
+    except Exception as e:
+        state.sensor_error_count += 1
+        state.total_sensor_errors += 1
+        print("BNO055 UPDATE ERROR:", e)
 
 
 async def check_bno055_chip_id(timeout_ms=500):
