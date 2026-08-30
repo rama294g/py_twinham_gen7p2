@@ -13,7 +13,7 @@ from app_state import Config, MENU_MAIN, clamp, state
 from bno055 import BNO055
 from config_store import load_config
 from lcd_menu import display_task, joystick_task, lcd_print
-from sensing import sensor_task
+from sensing import configure_sensor, receive_sensor_sample, sensor_task
 
 m_gyro2 = BNO055(Pin(4), Pin(5))
 m_chip_id = None
@@ -392,12 +392,12 @@ async def monitor_task():
         await asyncio.sleep_ms(1000)
 
 
-async def bno055_rx_chip_id(_chip_id):
+def bno055_rx_chip_id(_chip_id):
     global m_chip_id
     m_chip_id = _chip_id
 
 
-async def bno055_rx_gyro(_accx, _accy, _accz, _gyrox, _gyroy, _gyroz):
+def bno055_rx_gyro(_accx, _accy, _accz, _gyrox, _gyroy, _gyroz):
     global m_accx, m_accy, m_accz
     global m_gyrox, m_gyroy, m_gyroz
     m_accx = _accx
@@ -406,6 +406,22 @@ async def bno055_rx_gyro(_accx, _accy, _accz, _gyrox, _gyroy, _gyroz):
     m_gyrox = _gyrox * (180.0 / math.pi)
     m_gyroy = _gyroy * (180.0 / math.pi)
     m_gyroz = _gyroz * (180.0 / math.pi)
+    receive_sensor_sample(
+        m_accx, m_accy, m_accz, m_gyrox, m_gyroy, m_gyroz
+    )
+
+
+async def check_bno055_chip_id(timeout_ms=500):
+    """Request and validate the BNO055 chip ID with a bounded wait."""
+    global m_chip_id
+    m_chip_id = None
+    m_gyro2.tx_CHIP_ID()
+    started = utime.ticks_ms()
+    while m_chip_id is None:
+        if utime.ticks_diff(utime.ticks_ms(), started) > timeout_ms:
+            return False
+        await asyncio.sleep_ms(10)
+    return m_chip_id == 0xA0
 
 
 async def main():
@@ -435,15 +451,18 @@ async def main():
     # -----------------------------------------------------
     delay = 10
     m_gyro2.attach_rx_callback(bno055_rx_gyro, bno055_rx_chip_id)
-    await asyncio.sleep_ms(delay)
-    m_gyro2.tx_CHIP_ID()
-    await asyncio.sleep_ms(delay)
+    configure_sensor(m_gyro2.tx_GET_ACCGYRO)
+    if not await check_bno055_chip_id():
+        lcd_print("BNO ERR", 0)
+        lcd_print("CHECK", 1)
+        while True:
+            motor_sleep()
+            await asyncio.sleep(1)
+
     m_gyro2.tx_OPR_MODE()
     await asyncio.sleep_ms(delay)
     await asyncio.sleep_ms(1500)
-    m_gyro2.tx_CHIP_ID()
-    await asyncio.sleep_ms(delay)
-    if not bno_init():
+    if not await check_bno055_chip_id():
 
         lcd_print("BNO ERR", 0)
         lcd_print("CHECK", 1)

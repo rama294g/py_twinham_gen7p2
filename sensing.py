@@ -4,12 +4,23 @@ import uasyncio as asyncio
 import utime
 
 from app_state import Config, clamp, fitin360, state
-#from bno055 import (
-#    BNO_READ_DATALEN_UNMATCH,
-#    BNO_READ_PENDING,
-#    BNO_READ_TIMEOUT,
-#    read_acc_gyro
-#)
+
+_request_sensor_sample = None
+_latest_sensor_sample = None
+_sensor_sample_sequence = 0
+
+
+def configure_sensor(request_sensor_sample):
+    """Register the callback used to request one BNO055 sample."""
+    global _request_sensor_sample
+    _request_sensor_sample = request_sensor_sample
+
+
+def receive_sensor_sample(accx, accy, accz, gyrox, gyroy, gyroz):
+    """Publish a complete sample received by the BNO055 UART callback."""
+    global _latest_sensor_sample, _sensor_sample_sequence
+    _latest_sensor_sample = (accx, accy, accz, gyrox, gyroy, gyroz)
+    _sensor_sample_sequence += 1
 
 Q1_RAD = math.radians(Config.Q1_DEG)
 COS_Q1 = math.cos(Q1_RAD)
@@ -168,6 +179,9 @@ async def sensor_task():
 
     last_sample_us = utime.ticks_us()
     last_diag_ms = utime.ticks_ms()
+    last_sequence = _sensor_sample_sequence
+    request_started_ms = 0
+    request_pending = False
 
     while True:
 
@@ -208,18 +222,19 @@ async def sensor_task():
                 SENSOR_PERIOD_US
             )
 
-        read_result, sensor = read_acc_gyro()
+        if _request_sensor_sample is None:
+            raise RuntimeError("BNO055 sensor request callback is not configured")
 
-        if read_result == BNO_READ_PENDING:
+        if not request_pending:
+            _request_sensor_sample()
+            request_started_ms = utime.ticks_ms()
+            request_pending = True
 
-            # A normal scheduler step with no bytes (or only part of a reply)
-            # is not a sensor error.  The persistent queue is polled next step.
-            continue
-
-        if read_result in (
-            BNO_READ_TIMEOUT,
-            BNO_READ_DATALEN_UNMATCH
-        ):
+        if _sensor_sample_sequence == last_sequence:
+            if utime.ticks_diff(
+                utime.ticks_ms(), request_started_ms
+            ) <= Config.UART_TIMEOUT_MS:
+                continue
 
             # -------------------------------------------------
             # Keep the last valid sensor/angle value.
@@ -229,15 +244,9 @@ async def sensor_task():
             state.sensor_error_count += 1
             state.total_sensor_errors += 1
 
-            if read_result == BNO_READ_DATALEN_UNMATCH:
-                error_name = "DATALEN UNMATCH"
-            else:
-                error_name = "TIMEOUT"
-
             print(
-                "SENSOR READ {} count={} total={} "
+                "SENSOR READ TIMEOUT count={} total={} "
                 "ANGLE HOLD={:+.1f}".format(
-                    error_name,
                     state.sensor_error_count,
                     state.total_sensor_errors,
                     state.angle
@@ -258,10 +267,12 @@ async def sensor_task():
             ):
                 state.sensor_ok = False
 
-            # Filter states and state.angle are intentionally
-            # unchanged here.
-            # エラー時も次回の20msスケジュールへ進む
+            request_pending = False
             continue
+
+        sensor = _latest_sensor_sample
+        last_sequence = _sensor_sample_sequence
+        request_pending = False
 
         sample_us = utime.ticks_us()
         dt = (
@@ -333,10 +344,14 @@ async def sensor_task():
             )
             last_diag_ms = now_diag_ms
 
+        # Keep one request in flight so the next 50 Hz scheduler step can
+        # consume the reply without adding an extra cycle of latency.
+        _request_sensor_sample()
+        request_started_ms = utime.ticks_ms()
+        request_pending = True
+
         # -------------------------------------------------
         # ここではsleepせず、次回予定時刻との差分で
         # 次ループの待ち時間を決めます。
         # -------------------------------------------------
         # （次ループ先頭で待機）
-
-
