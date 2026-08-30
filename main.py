@@ -24,6 +24,7 @@ m_gyrox = 0.0
 m_gyroy = 0.0
 m_gyroz = 0.0
 last_sensor_us = None
+sensor_dt_samples_ms = []
 
 gc.collect()
 led = Pin("LED", Pin.OUT)
@@ -417,7 +418,20 @@ def bno055_rx_gyro(_accx, _accy, _accz, _gyrox, _gyroy, _gyroz):
     if last_sensor_us is None:
         dt = Config.SENSOR_INTERVAL_MS / 1000.0
     else:
-        dt = utime.ticks_diff(now_us, last_sensor_us) / 1000000.0
+        measured_dt_us = utime.ticks_diff(now_us, last_sensor_us)
+        measured_dt_ms = measured_dt_us / 1000.0
+        sensor_dt_samples_ms.append(measured_dt_ms)
+        if len(sensor_dt_samples_ms) > 10:
+            sensor_dt_samples_ms.pop(0)
+        average_dt_ms = sum(sensor_dt_samples_ms) / len(sensor_dt_samples_ms)
+        print(
+            "BNO055 delta t = {:.3f} ms, 10-call average = {:.3f} ms".format(
+                measured_dt_ms,
+                average_dt_ms,
+            )
+        )
+
+        dt = measured_dt_us / 1000000.0
         dt = clamp(dt, 0.001, 0.1)
     last_sensor_us = now_us
 
