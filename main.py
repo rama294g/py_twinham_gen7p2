@@ -283,6 +283,7 @@ async def control_task():
             # -------------------------------------------------
             # Angle -> PWM
             # -------------------------------------------------
+            m_gyro2.tx_GET_ACCGYRO();
             sensor = (m_accx, m_accy, m_accz)
             update_angle(sensor, dt)
             diff = clamp(
