@@ -13,7 +13,7 @@ from app_state import Config, MENU_MAIN, clamp, state
 from bno055 import BNO055
 from config_store import load_config
 from lcd_menu import display_task, joystick_task, lcd_print
-from sensing import configure_sensor, receive_sensor_sample, sensor_task
+from sensing import update_angle #configure_sensor, receive_sensor_sample, sensor_task
 
 m_gyro2 = BNO055(Pin(4), Pin(5))
 m_chip_id = None
@@ -283,7 +283,8 @@ async def control_task():
             # -------------------------------------------------
             # Angle -> PWM
             # -------------------------------------------------
-
+            sensor = (m_accx, m_accy, m_accz)
+            update_angle(sensor, dt)
             diff = clamp(
                 state.angle,
                 Config.ANGLE_MIN,
@@ -475,9 +476,9 @@ async def main():
     # Tasks
     # -----------------------------------------------------
 
-    asyncio.create_task(
-        sensor_task()
-    )
+    #asyncio.create_task(
+    #    sensor_task()
+    #)
 
     asyncio.create_task(
         switch_task()
