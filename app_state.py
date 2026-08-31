@@ -2,7 +2,6 @@
 
 
 class Config:
-
     CONFIG_FILE = "config.json"
     GAIN = 50
     NEUTRAL_ANG = 30
@@ -14,6 +13,7 @@ class Config:
     MOTOR_PWM_FREQ = 5000
     CONTROL_INTERVAL_MS = 20
     SENSOR_INTERVAL_MS = 20
+    BLE_INTERVAL_MS = 200
     UART_TIMEOUT_MS = 50
     SENSOR_HOLD_TIMEOUT_MS = 500
     Q1_DEG = 0.0
