@@ -112,14 +112,20 @@ def send_config():
     )
 
 
-def send_status():
+def send_status(header):
     motor = "ENABLE" if state.motor_enabled else "STOP"
     sensor = "OK" if state.sensor_ok else "NG"
-    ble_comm.send_text(
-        ("STATUS," "{:.1f}," "{}," "{}," "{:.1f}," "{}," "{}").format(
-            state.angle, state.joystick, state.switch_pressed, 0.0, motor, sensor
-        )
+    msg = ("{}," "{:.1f}," "{}," "{}," "{:.1f}," "{}," "{}").format(
+        header,
+        state.angle,
+        state.joystick,
+        state.switch_pressed,
+        state.current_pwm_command,
+        motor,
+        sensor,
     )
+    if ble_comm.is_connected():
+        ble_comm.send_text(msg)
 
 
 def process_command(command):
@@ -169,7 +175,7 @@ def process_command(command):
         return
 
     if key == "GET" and len(parts) >= 2 and parts[1].strip().upper() == "STATUS":
-        send_status()
+        send_status("STATUS")
         return
 
     if key == "MOTOR" and len(parts) >= 2:
@@ -217,13 +223,7 @@ async def command_task():
 
 async def ble_send_task():
     while True:
-        motor = "ENABLE" if state.motor_enabled else "STOP"
-        sensor = "OK" if state.sensor_ok else "NG"
-        msg = ("DATA," "{:.1f}," "{}," "{}," "{:.1f}," "{}," "{}").format(
-            state.angle, state.joystick, state.switch_pressed, 0.0, motor, sensor
-        )
-        if ble_comm.is_connected():
-            ble_comm.send_text(msg)
+        send_status("DATA")
         await asyncio.sleep_ms(Config.BLE_INTERVAL_MS)
 
 
@@ -442,13 +442,12 @@ def bno055_rx_gyro(_accx, _accy, _accz, _gyrox, _gyroy, _gyroz):
     sensor = (m_accx, m_accy, m_accz, m_gyrox, m_gyroy, m_gyroz)
     # try:
     update_angle(sensor, dt)
-    print(
-        "dt = {:.1f}, dt_ave = {:.1f} ms, ang = {:.1f} deg".format(
-            measured_dt_ms,
-            average_dt_ms,
-            state.angle,
+    if False:
+        print(
+            "dt = {:.1f}, dt_ave = {:.1f} ms, ang = {:.1f} deg".format(
+                measured_dt_ms, average_dt_ms, state.angle
+            )
         )
-    )
     state.sensor_error_count = 0
     state.sensor_ok = True
     state.last_sensor_time = utime.ticks_ms()
