@@ -28,18 +28,14 @@ class BNO055:
 
         # RP2350's UART RX-idle interrupt is the MicroPython equivalent of
         # mbed's SerialBase::RxIrq.  A soft IRQ permits normal UART methods.
-        self.mbno055_uart.irq(
-            self.bno055_rx, trigger=UART.IRQ_RXIDLE, hard=False
-        )
+        self.mbno055_uart.irq(self.bno055_rx, trigger=UART.IRQ_RXIDLE, hard=False)
 
     def attach_rx_callback(self, bno055_rx_gyro, bno055_rx_chip_id):
         self.m_bno055_rx_gyro = bno055_rx_gyro
         self.m_bno055_rx_chip_id = bno055_rx_chip_id
 
     def set_baudrate(self, baudrate):
-        self.mbno055_uart.init(
-            baudrate=baudrate, bits=8, parity=None, stop=1
-        )
+        self.mbno055_uart.init(baudrate=baudrate, bits=8, parity=None, stop=1)
 
     def tx_CR(self):
         self.add_uart_data(bytes((0x0D,)))
@@ -64,15 +60,13 @@ class BNO055:
             remaining = data_len - shift_to_left
             if remaining > 0:
                 data[:remaining] = data[shift_to_left:data_len]
-            data[max(0, remaining):data_len] = bytes(min(shift_to_left, data_len))
+            data[max(0, remaining) : data_len] = bytes(min(shift_to_left, data_len))
         elif shift_to_left < 0:
             shift_to_right = -shift_to_left
             remaining = data_len - shift_to_right
             if remaining > 0:
                 data[shift_to_right:data_len] = data[:remaining]
-            data[:min(shift_to_right, data_len)] = bytes(
-                min(shift_to_right, data_len)
-            )
+            data[: min(shift_to_right, data_len)] = bytes(min(shift_to_right, data_len))
 
     def cue_uartdata(self, data, data_len):
         for index in range(data_len):
@@ -95,7 +89,7 @@ class BNO055:
         return True, data_len - packet_len
 
     def parse_packet(self, packet, packet_len):
-        if packet_len == 20: # and packet[8:14] == b"\x00" * 6:
+        if packet_len == 20:  # and packet[8:14] == b"\x00" * 6:
             values = struct.unpack_from("<9h", packet, 2)
             accx = values[0] * 0.001 * 9.801
             accy = values[1] * 0.001 * 9.801
@@ -104,9 +98,7 @@ class BNO055:
             gyroy = values[7] / 16.0 / 180.0 * 3.14156
             gyroz = values[8] / 16.0 / 180.0 * 3.14156
             if self.m_bno055_rx_gyro is not None:
-                self.m_bno055_rx_gyro(
-                    accx, accy, accz, gyrox, gyroy, gyroz
-                )
+                self.m_bno055_rx_gyro(accx, accy, accz, gyrox, gyroy, gyroz)
         elif packet_len == 3 and packet[1] == 1:
             if self.m_bno055_rx_chip_id is not None:
                 self.m_bno055_rx_chip_id(packet[2])
@@ -125,7 +117,7 @@ class BNO055:
             if not chunk:
                 break
             end = self.rx_data_len + len(chunk)
-            self.rx_data[self.rx_data_len:end] = chunk
+            self.rx_data[self.rx_data_len : end] = chunk
             self.rx_data_len = end
 
         extracted = True
@@ -138,7 +130,7 @@ class BNO055:
         """Transmit the queued bytes (UART.write is buffered on MicroPython)."""
         if self.m_uart_data_len:
             self.mbno055_uart.write(
-                memoryview(self.m_uart_data)[:self.m_uart_data_len]
+                memoryview(self.m_uart_data)[: self.m_uart_data_len]
             )
         self.m_uart_data_len = 0
         self.i = 0

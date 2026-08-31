@@ -3,6 +3,7 @@
 Hardware drivers and application tasks live in feature-specific modules; this
 module only wires them together and owns application startup/shutdown.
 """
+
 import math
 import gc
 import uasyncio as asyncio
@@ -36,13 +37,8 @@ print("PICO 2W INTEGRATED START")
 print("================================")
 
 
-
 ZERO_SWITCH_PIN = 6
-zero_switch = Pin(
-    ZERO_SWITCH_PIN,
-    Pin.IN,
-    Pin.PULL_UP
-)
+zero_switch = Pin(ZERO_SWITCH_PIN, Pin.IN, Pin.PULL_UP)
 
 ZERO_DEBOUNCE_MS = 300
 last_switch = zero_switch.value()
@@ -67,11 +63,9 @@ sleep_pin = Pin(MOTOR_SLEEP_PIN, Pin.OUT)
 # drive(3) corresponds to the 12mA setting used in the verified
 # motor test program.
 try:
-
     cw_pin.drive(3)
     ccw_pin.drive(3)
     sleep_pin.drive(3)
-
     print("GPIO DRIVE = 12mA")
 
 except Exception as e:
@@ -88,73 +82,44 @@ ccw_pwm.freq(Config.MOTOR_PWM_FREQ)
 
 
 def pwm_duty_percent(percent):
-
-    percent = clamp(
-        percent,
-        0.0,
-        100.0
-    )
-
-    return int(
-        percent * 65535.0 / 100.0
-    )
+    percent = clamp(percent, 0.0, 100.0)
+    return int(percent * 65535.0 / 100.0)
 
 
 def motor_stop():
-
     cw_pwm.duty_u16(0)
     ccw_pwm.duty_u16(0)
-
     state.motor_state = "STOP"
 
 
 def motor_sleep():
-
     motor_stop()
-
     sleep_pin.value(0)
-
     state.motor_enabled = False
     state.motor_state = "SLEEP"
 
 
 def motor_enable():
-
     sleep_pin.value(1)
     state.motor_enabled = True
 
 
 def motor_cw(percent):
-
-    percent = abs(
-        clamp(percent, 0.0, 100.0)
-    )
-
+    percent = abs(clamp(percent, 0.0, 100.0))
     ccw_pwm.duty_u16(0)
-    cw_pwm.duty_u16(
-        pwm_duty_percent(percent)
-    )
-
+    cw_pwm.duty_u16(pwm_duty_percent(percent))
     state.motor_state = "CW"
 
 
 def motor_ccw(percent):
-
-    percent = abs(
-        clamp(percent, 0.0, 100.0)
-    )
-
+    percent = abs(clamp(percent, 0.0, 100.0))
     cw_pwm.duty_u16(0)
-    ccw_pwm.duty_u16(
-        pwm_duty_percent(percent)
-    )
-
+    ccw_pwm.duty_u16(pwm_duty_percent(percent))
     state.motor_state = "CCW"
 
 
 # Safe initial condition
 motor_sleep()
-
 
 
 async def switch_task():
@@ -166,37 +131,23 @@ async def switch_task():
 
         switch_now = zero_switch.value()
 
-        state.switch_pressed = (
-            1 if switch_now == 0 else 0
-        )
+        state.switch_pressed = 1 if switch_now == 0 else 0
 
         # Falling edge = zero set.
-        if (
-            last_switch == 1 and
-            switch_now == 0
-        ):
+        if last_switch == 1 and switch_now == 0:
 
             now = utime.ticks_ms()
 
-            if utime.ticks_diff(
-                now,
-                last_zero_time
-            ) >= ZERO_DEBOUNCE_MS:
+            if utime.ticks_diff(now, last_zero_time) >= ZERO_DEBOUNCE_MS:
 
-                state.neutral = (
-                    -state.lpf2_angle
-                )
+                state.neutral = -state.lpf2_angle
 
                 state.zeroed = True
 
                 print()
                 print("==========================")
                 print("ZERO SET")
-                print(
-                    "NEUTRAL = {:+.3f}".format(
-                        state.neutral
-                    )
-                )
+                print("NEUTRAL = {:+.3f}".format(state.neutral))
                 print("ANGLE = 0.000")
                 print("==========================")
 
@@ -205,7 +156,6 @@ async def switch_task():
         last_switch = switch_now
 
         await asyncio.sleep_ms(10)
-
 
 
 async def control_task():
@@ -229,9 +179,7 @@ async def control_task():
                 motor_stop()
                 motor_sleep()
 
-                await asyncio.sleep_ms(
-                    Config.CONTROL_INTERVAL_MS
-                )
+                await asyncio.sleep_ms(Config.CONTROL_INTERVAL_MS)
                 continue
 
             # -------------------------------------------------
@@ -244,27 +192,20 @@ async def control_task():
                 state.current_pwm_command = 0.0
                 motor_sleep()
 
-                await asyncio.sleep_ms(
-                    Config.CONTROL_INTERVAL_MS
-                )
+                await asyncio.sleep_ms(Config.CONTROL_INTERVAL_MS)
                 continue
 
             # -------------------------------------------------
             # Require ZERO switch once after power-up.
             # -------------------------------------------------
 
-            if (
-                Config.MOTOR_REQUIRE_ZERO and
-                not state.zeroed
-            ):
+            if Config.MOTOR_REQUIRE_ZERO and not state.zeroed:
 
                 state.target_pwm_command = 0.0
                 state.current_pwm_command = 0.0
                 motor_sleep()
 
-                await asyncio.sleep_ms(
-                    Config.CONTROL_INTERVAL_MS
-                )
+                await asyncio.sleep_ms(Config.CONTROL_INTERVAL_MS)
                 continue
 
             # -------------------------------------------------
@@ -279,9 +220,7 @@ async def control_task():
                 state.current_pwm_command = 0.0
                 motor_sleep()
 
-                await asyncio.sleep_ms(
-                    Config.CONTROL_INTERVAL_MS
-                )
+                await asyncio.sleep_ms(Config.CONTROL_INTERVAL_MS)
                 continue
 
             motor_enable()
@@ -289,49 +228,32 @@ async def control_task():
             # -------------------------------------------------
             # Angle -> PWM
             # -------------------------------------------------
-            diff = clamp(
-                state.angle,
-                Config.ANGLE_MIN,
-                Config.ANGLE_MAX
-            )
+            diff = clamp(state.angle, Config.ANGLE_MIN, Config.ANGLE_MAX)
 
             if diff >= 0:
 
                 if Config.ANGLE_MAX > 0:
-                    normalized = (
-                        diff /
-                        float(Config.ANGLE_MAX)
-                    )
+                    normalized = diff / float(Config.ANGLE_MAX)
                 else:
                     normalized = 0.0
 
-                state.target_pwm_command = (
-                    normalized *
-                    Config.PWM_MAX
-                )
+                state.target_pwm_command = normalized * Config.PWM_MAX
 
             else:
 
                 if Config.ANGLE_MIN < 0:
-                    normalized = (
-                        diff /
-                        abs(float(Config.ANGLE_MIN))
-                    )
+                    normalized = diff / abs(float(Config.ANGLE_MIN))
                 else:
                     normalized = 0.0
 
-                state.target_pwm_command = (
-                    normalized *
-                    abs(Config.PWM_MIN)
-                )
+                state.target_pwm_command = normalized * abs(Config.PWM_MIN)
 
             # -------------------------------------------------
             # PWM lag
             # -------------------------------------------------
 
             state.current_pwm_command += (
-                state.target_pwm_command -
-                state.current_pwm_command
+                state.target_pwm_command - state.current_pwm_command
             ) * 0.2
 
             duty = state.current_pwm_command
@@ -346,31 +268,21 @@ async def control_task():
 
             elif duty > 0:
 
-                motor_cw(
-                    abs(duty)
-                )
+                motor_cw(abs(duty))
 
             else:
 
-                motor_ccw(
-                    abs(duty)
-                )
+                motor_ccw(abs(duty))
 
         except Exception as e:
 
-            print(
-                "CONTROL ERROR:",
-                e
-            )
+            print("CONTROL ERROR:", e)
 
             state.target_pwm_command = 0.0
             state.current_pwm_command = 0.0
             motor_sleep()
 
-        await asyncio.sleep_ms(
-            Config.CONTROL_INTERVAL_MS
-        )
-
+        await asyncio.sleep_ms(Config.CONTROL_INTERVAL_MS)
 
 
 async def monitor_task():
@@ -379,10 +291,7 @@ async def monitor_task():
 
         if state.sensor_ok:
 
-            age = utime.ticks_diff(
-                utime.ticks_ms(),
-                state.last_sensor_time
-            )
+            age = utime.ticks_diff(utime.ticks_ms(), state.last_sensor_time)
 
             if age > Config.SENSOR_HOLD_TIMEOUT_MS:
 
@@ -429,17 +338,19 @@ def bno055_rx_gyro(_accx, _accy, _accz, _gyrox, _gyroy, _gyroz):
     last_sensor_us = now_us
 
     sensor = (m_accx, m_accy, m_accz, m_gyrox, m_gyroy, m_gyroz)
-    #try:
+    # try:
     update_angle(sensor, dt)
-    print("dt = {:.1f}, dt_ave = {:.1f} ms, ang = {:.1f} deg".format(                                                                                
-        measured_dt_ms,
-        average_dt_ms,
-        state.angle,
-        ))
+    print(
+        "dt = {:.1f}, dt_ave = {:.1f} ms, ang = {:.1f} deg".format(
+            measured_dt_ms,
+            average_dt_ms,
+            state.angle,
+        )
+    )
     state.sensor_error_count = 0
     state.sensor_ok = True
     state.last_sensor_time = utime.ticks_ms()
-    #except Exception as e:
+    # except Exception as e:
     #    state.sensor_error_count += 1
     #    state.total_sensor_errors += 1
     #    print("BNO055 UPDATE ERROR:", e)
@@ -455,7 +366,7 @@ async def check_bno055_chip_id(timeout_ms=500):
         if utime.ticks_diff(utime.ticks_ms(), started) > timeout_ms:
             return False
         await asyncio.sleep_ms(10)
-        
+
     return m_chip_id == 0xA0
 
 
@@ -463,16 +374,12 @@ async def main():
 
     print("MAIN START")
 
-    # Safe motor state before anything else.
     motor_sleep()
-
     load_config()
 
     # -----------------------------------------------------
     # MENU SAFE START
     # -----------------------------------------------------
-    # 設定ファイルにはMENU状態を保存しない。
-    # 電源投入/再起動時は必ず通常表示から開始する。
     state.menu_mode = False
     state.menu_level = MENU_MAIN
     state.menu_index = 0
@@ -509,25 +416,11 @@ async def main():
     # Tasks
     # -----------------------------------------------------
 
-    asyncio.create_task(
-        switch_task()
-    )
-
-    asyncio.create_task(
-        joystick_task()
-    )
-
-    asyncio.create_task(
-        display_task()
-    )
-
-    asyncio.create_task(
-        control_task()
-    )
-
-    asyncio.create_task(
-        monitor_task()
-    )
+    asyncio.create_task(switch_task())
+    asyncio.create_task(joystick_task())
+    asyncio.create_task(display_task())
+    asyncio.create_task(control_task())
+    asyncio.create_task(monitor_task())
 
     print()
     print("================================")
@@ -549,7 +442,6 @@ async def main():
 
     while True:
         await asyncio.sleep(1)
-
 
 
 try:

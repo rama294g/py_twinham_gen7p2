@@ -1,7 +1,9 @@
 """Persistence for user-editable settings."""
+
 import ujson
 
 from app_state import Config, clamp, display_value_items, state
+
 
 def save_config():
 
@@ -37,24 +39,14 @@ def load_config():
         with open(Config.CONFIG_FILE, "r") as f:
             cfg = ujson.load(f)
 
-        Config.GAIN = clamp(
-            int(cfg.get("GAIN", Config.GAIN)), 0, 100
-        )
+        Config.GAIN = clamp(int(cfg.get("GAIN", Config.GAIN)), 0, 100)
         Config.NEUTRAL_ANG = clamp(
             int(cfg.get("NEUTRAL_ANG", Config.NEUTRAL_ANG)), 10, 50
         )
-        Config.PWM_MAX = clamp(
-            int(cfg.get("PWM_MAX", 30)), 1, 100
-        )
-        Config.PWM_MIN = clamp(
-            int(cfg.get("PWM_MIN", -30)), -100, -1
-        )
-        Config.ANGLE_MAX = clamp(
-            int(cfg.get("ANGLE_MAX", 90)), 1, 180
-        )
-        Config.ANGLE_MIN = clamp(
-            int(cfg.get("ANGLE_MIN", -90)), -180, -1
-        )
+        Config.PWM_MAX = clamp(int(cfg.get("PWM_MAX", 30)), 1, 100)
+        Config.PWM_MIN = clamp(int(cfg.get("PWM_MIN", -30)), -100, -1)
+        Config.ANGLE_MAX = clamp(int(cfg.get("ANGLE_MAX", 90)), 1, 180)
+        Config.ANGLE_MIN = clamp(int(cfg.get("ANGLE_MIN", -90)), -180, -1)
 
         # -----------------------------------------------------
         # DISPLAY設定を厳密に検証
@@ -62,12 +54,8 @@ def load_config():
         line1 = int(cfg.get("line1_setting", 0))
         line2 = int(cfg.get("line2_setting", 1))
 
-        state.line1_setting = clamp(
-            line1, 0, len(display_value_items) - 1
-        )
-        state.line2_setting = clamp(
-            line2, 0, len(display_value_items) - 1
-        )
+        state.line1_setting = clamp(line1, 0, len(display_value_items) - 1)
+        state.line2_setting = clamp(line2, 0, len(display_value_items) - 1)
 
         print("Config loaded")
         print("DISPLAY 1stLine =", state.line1_setting)
@@ -76,10 +64,7 @@ def load_config():
         # -----------------------------------------------------
         # 不正値があった場合は修正値を保存
         # -----------------------------------------------------
-        if (
-            line1 != state.line1_setting or
-            line2 != state.line2_setting
-        ):
+        if line1 != state.line1_setting or line2 != state.line2_setting:
             print("DISPLAY CONFIG CORRECTED")
             save_config()
 

@@ -1,4 +1,5 @@
 """Angle estimation from a parsed BNO055 sample."""
+
 import math
 
 from app_state import Config, clamp, fitin360, state
@@ -27,24 +28,13 @@ def update_angle(sensor, dt):
 
     new_accx = m_accx
 
-    new_accy = SIGN_LR * (
-        COS_Q1 * m_accy +
-        SIN_Q1 * m_accz
-    )
+    new_accy = SIGN_LR * (COS_Q1 * m_accy + SIN_Q1 * m_accz)
 
-    new_gyroz = SIGN_LR * (
-        COS_Q1 * m_gyroz -
-        SIN_Q1 * m_gyroy
-    )
+    new_gyroz = SIGN_LR * (COS_Q1 * m_gyroz - SIN_Q1 * m_gyroy)
 
     state.gyro_angle_rate = -new_gyroz
 
-    tilt_observe = math.degrees(
-        math.atan2(
-            new_accy,
-            new_accx
-        )
-    )
+    tilt_observe = math.degrees(math.atan2(new_accy, new_accx))
 
     if Config.SW_IS_RIGHT:
         tilt_observe -= 90.0
@@ -53,53 +43,26 @@ def update_angle(sensor, dt):
 
     tilt_observe = fitin360(tilt_observe)
 
-    tilt_priest = (
-        state.kalman_angle -
-        new_gyroz * dt
-    )
+    tilt_priest = state.kalman_angle - new_gyroz * dt
 
-    tilt_delta = fitin360(
-        tilt_observe - tilt_priest
-    )
+    tilt_delta = fitin360(tilt_observe - tilt_priest)
 
-    state.kalman_angle = (
-        Config.KALMAN_GAIN * tilt_delta +
-        tilt_priest
-    )
+    state.kalman_angle = Config.KALMAN_GAIN * tilt_delta + tilt_priest
 
-    state.kalman_angle = fitin360(
-        state.kalman_angle
-    )
+    state.kalman_angle = fitin360(state.kalman_angle)
 
-    state.kalman_angle = clamp(
-        state.kalman_angle,
-        -90.0,
-        90.0
-    )
+    state.kalman_angle = clamp(state.kalman_angle, -90.0, 90.0)
 
-    state.lpf1_angle = (
-        dt * state.kalman_angle +
-        Config.LPF_TAU * state.lpf1_angle
-    ) / (
+    state.lpf1_angle = (dt * state.kalman_angle + Config.LPF_TAU * state.lpf1_angle) / (
         Config.LPF_TAU + dt
     )
 
-    state.lpf2_angle = (
-        dt * state.lpf1_angle +
-        Config.LPF_TAU * state.lpf2_angle
-    ) / (
+    state.lpf2_angle = (dt * state.lpf1_angle + Config.LPF_TAU * state.lpf2_angle) / (
         Config.LPF_TAU + dt
     )
 
     state.observed_angle = tilt_observe
 
-    state.angle = (
-        -state.lpf2_angle -
-        state.neutral * 0 - Config.NEUTRAL_ANG
-    )
+    state.angle = -state.lpf2_angle - state.neutral * 0 - Config.NEUTRAL_ANG
 
-    state.angle = clamp(
-        state.angle,
-        -90.0,
-        90.0
-    )
+    state.angle = clamp(state.angle, -90.0, 90.0)
