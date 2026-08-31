@@ -16,7 +16,28 @@ from config_store import load_config
 from lcd_menu import display_task, joystick_task, lcd_print
 from sensing import update_angle
 
-m_gyro2 = BNO055(Pin(4), Pin(5))
+
+# =========================================================
+# Raspberry Pi Pico2W Pin Assignment
+UART1_TX_PIN = 4
+UART1_RX_PIN = 5
+ZERO_SWITCH_PIN = 6
+MOTOR_CW_PIN = 16
+MOTOR_CCW_PIN = 17
+MOTOR_SLEEP_PIN = 18
+
+
+# =========================================================
+# Create Pin
+uart1_tx_pin = Pin(UART1_TX_PIN)
+uart1_rx_pin = Pin(UART1_RX_PIN)
+zero_switch_pin = Pin(ZERO_SWITCH_PIN, Pin.IN, Pin.PULL_UP)
+cw_pin = Pin(MOTOR_CW_PIN, Pin.OUT)
+ccw_pin = Pin(MOTOR_CCW_PIN, Pin.OUT)
+sleep_pin = Pin(MOTOR_SLEEP_PIN, Pin.OUT)
+
+
+m_gyro2 = BNO055(uart1_tx_pin, uart1_rx_pin)
 m_chip_id = None
 m_accx = 0.0
 m_accy = 0.0
@@ -37,31 +58,15 @@ print("PICO 2W INTEGRATED START")
 print("================================")
 
 
-ZERO_SWITCH_PIN = 6
-zero_switch = Pin(ZERO_SWITCH_PIN, Pin.IN, Pin.PULL_UP)
-
 ZERO_DEBOUNCE_MS = 300
-last_switch = zero_switch.value()
+last_switch = zero_switch_pin.value()
 last_zero_time = utime.ticks_ms()
 
 
 # =========================================================
 # MOTOR
 # =========================================================
-
-MOTOR_CW_PIN = 16
-MOTOR_CCW_PIN = 17
-MOTOR_SLEEP_PIN = 18
-
 print("MOTOR INIT")
-
-cw_pin = Pin(MOTOR_CW_PIN, Pin.OUT)
-ccw_pin = Pin(MOTOR_CCW_PIN, Pin.OUT)
-sleep_pin = Pin(MOTOR_SLEEP_PIN, Pin.OUT)
-
-# RP2350 MicroPython versions may expose drive() differently.
-# drive(3) corresponds to the 12mA setting used in the verified
-# motor test program.
 try:
     cw_pin.drive(3)
     ccw_pin.drive(3)
@@ -69,7 +74,6 @@ try:
     print("GPIO DRIVE = 12mA")
 
 except Exception as e:
-
     print("GPIO DRIVE SET NOT AVAILABLE")
     print("Drive setting skipped:", e)
 
@@ -129,7 +133,7 @@ async def switch_task():
 
     while True:
 
-        switch_now = zero_switch.value()
+        switch_now = zero_switch_pin.value()
 
         state.switch_pressed = 1 if switch_now == 0 else 0
 
@@ -139,18 +143,14 @@ async def switch_task():
             now = utime.ticks_ms()
 
             if utime.ticks_diff(now, last_zero_time) >= ZERO_DEBOUNCE_MS:
-
                 state.neutral = -state.lpf2_angle
-
                 state.zeroed = True
-
                 print()
                 print("==========================")
                 print("ZERO SET")
                 print("NEUTRAL = {:+.3f}".format(state.neutral))
                 print("ANGLE = 0.000")
                 print("==========================")
-
                 last_zero_time = now
 
         last_switch = switch_now
@@ -164,62 +164,34 @@ async def control_task():
 
         try:
 
-            # The UART interrupt parses the response and invokes
-            # bno055_rx_gyro; no separate asynchronous sensing task is needed.
             m_gyro2.tx_GET_ACCGYRO()
 
-            # -------------------------------------------------
-            # Menu mode: motor must stop.
-            # -------------------------------------------------
-
             if state.menu_mode:
-
                 state.target_pwm_command = 0.0
                 state.current_pwm_command = 0.0
                 motor_stop()
                 motor_sleep()
-
                 await asyncio.sleep_ms(Config.CONTROL_INTERVAL_MS)
                 continue
-
-            # -------------------------------------------------
-            # Sensor invalid -> safe stop.
-            # -------------------------------------------------
 
             if not state.sensor_ok:
-
                 state.target_pwm_command = 0.0
                 state.current_pwm_command = 0.0
                 motor_sleep()
-
                 await asyncio.sleep_ms(Config.CONTROL_INTERVAL_MS)
                 continue
-
-            # -------------------------------------------------
-            # Require ZERO switch once after power-up.
-            # -------------------------------------------------
 
             if Config.MOTOR_REQUIRE_ZERO and not state.zeroed:
-
                 state.target_pwm_command = 0.0
                 state.current_pwm_command = 0.0
                 motor_sleep()
-
                 await asyncio.sleep_ms(Config.CONTROL_INTERVAL_MS)
                 continue
 
-            # -------------------------------------------------
-            # Motor enable: ONLY while GP6 button is pressed.
-            # GP6 is active-low (PULL_UP).
-            # Releasing the button immediately stops the motor.
-            # -------------------------------------------------
-
             if not state.switch_pressed:
-
                 state.target_pwm_command = 0.0
                 state.current_pwm_command = 0.0
                 motor_sleep()
-
                 await asyncio.sleep_ms(Config.CONTROL_INTERVAL_MS)
                 continue
 
@@ -228,24 +200,19 @@ async def control_task():
             # -------------------------------------------------
             # Angle -> PWM
             # -------------------------------------------------
-            diff = clamp(state.angle, Config.ANGLE_MIN, Config.ANGLE_MAX)
+            angle_clamped = clamp(state.angle, Config.ANGLE_MIN, Config.ANGLE_MAX)
 
-            if diff >= 0:
-
+            if angle_clamped >= 0:
                 if Config.ANGLE_MAX > 0:
-                    normalized = diff / float(Config.ANGLE_MAX)
+                    normalized = angle_clamped / float(Config.ANGLE_MAX)
                 else:
                     normalized = 0.0
-
                 state.target_pwm_command = normalized * Config.PWM_MAX
-
             else:
-
                 if Config.ANGLE_MIN < 0:
-                    normalized = diff / abs(float(Config.ANGLE_MIN))
+                    normalized = angle_clamped / abs(float(Config.ANGLE_MIN))
                 else:
                     normalized = 0.0
-
                 state.target_pwm_command = normalized * abs(Config.PWM_MIN)
 
             # -------------------------------------------------
@@ -263,16 +230,11 @@ async def control_task():
             # -------------------------------------------------
 
             if abs(duty) < Config.PWM_DEADBAND:
-
                 motor_stop()
-
             elif duty > 0:
-
-                motor_cw(abs(duty))
-
-            else:
-
                 motor_ccw(abs(duty))
+            else:
+                motor_cw(abs(duty))
 
         except Exception as e:
 
