@@ -21,6 +21,8 @@ from micropython import const
 
 
 DEVICE_NAME = b"TwinHAM_LH"
+RX_BUFFER_SIZE = 128
+MAX_QUEUED_COMMANDS = 16
 
 UART_UUID_SVCS = bluetooth.UUID("6E400001-B5A3-F393-E0A9-E50E24DCCA9E")
 UART_UUID_TX = bluetooth.UUID("6E400003-B5A3-F393-E0A9-E50E24DCCA9E")
@@ -46,6 +48,9 @@ class BLECommunication:
         ((self.tx_handle, self.rx_handle),) = self.ble.gatts_register_services(
             (UART_SERVICE,)
         )
+        # The default characteristic buffer is only 20 bytes.  Use append mode
+        # so writes made before the IRQ is serviced are not silently replaced.
+        self.ble.gatts_set_buffer(self.rx_handle, RX_BUFFER_SIZE, True)
         self.ble.irq(self._irq)
         print("BLE module ready")
 
@@ -90,11 +95,14 @@ class BLECommunication:
 
                 # 改行があれば複数コマンドとして分ける
                 for line in text.split("\n"):
-                    line = line.strip()
+                    line = line.strip(" \t\r")
                     if line:
                         # main.pyが後で処理するため、
                         # 一旦キューに保存する
-                        self.rx_commands.append(line)
+                        if len(self.rx_commands) < MAX_QUEUED_COMMANDS:
+                            self.rx_commands.append(line)
+                        else:
+                            print("BLE RX queue full")
 
             except Exception as e:
                 print("BLE RX error:", e)
@@ -117,9 +125,7 @@ class BLECommunication:
     # =====================================================
 
     def is_connected(self):
-        if len(self.connections) > 0:
-            return True
-        return False
+        return bool(self.connections)
 
     # =====================================================
     # 6-5. PCから受信したコマンドを1件取得
@@ -144,6 +150,11 @@ class BLECommunication:
     # =====================================================
 
     def send_text(self, text):
+        if not isinstance(text, bytes):
+            text = str(text).encode("utf-8")
+        if not text.endswith(b"\n"):
+            text += b"\n"
+
         # 接続中のPCすべてへ送信
         for conn in list(self.connections):
             try:
