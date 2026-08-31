@@ -61,6 +61,6 @@ def update_angle(sensor, dt):
 
     state.observed_angle = tilt_observe
 
-    state.angle = -state.lpf2_angle - state.neutral * 0 - Config.NEUTRAL_ANG
+    state.angle = -state.lpf2_angle - Config.NEUTRAL_ANG
 
     state.angle = clamp(state.angle, -90.0, 90.0)

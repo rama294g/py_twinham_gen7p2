@@ -33,8 +33,6 @@ class SystemState:
     gyro_angle_rate = 0.0
     gyro_z = 0.0
     dt = 0.0
-    neutral = 0.0
-    zeroed = False
     sensor_ok = False
     sensor_error_count = 0
     total_sensor_errors = 0
@@ -42,6 +40,7 @@ class SystemState:
     joystick = "NONE"
     joystick_value = 0
     switch_pressed = 0
+    switch_gain = 0.0
     target_pwm_command = 0.0
     current_pwm_command = 0.0
     motor_enabled = False
