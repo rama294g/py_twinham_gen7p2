@@ -12,7 +12,7 @@ from machine import Pin, PWM
 
 from app_state import Config, MENU_MAIN, clamp, state
 from bno055 import BNO055
-from config_store import load_config
+from config_store import load_config, save_config
 from lcd_menu import display_task, joystick_task, lcd_print
 from sensing import update_angle
 from blue_commu import BLECommunication
@@ -141,19 +141,27 @@ def process_command(command):
 
         if name == "PWM_MAX":
             Config.PWM_MAX = clamp(value, 0, 100)
+            applied_value = Config.PWM_MAX
         elif name == "PWM_MIN":
             Config.PWM_MIN = clamp(value, -100, 0)
+            applied_value = Config.PWM_MIN
         elif name == "ANG_MAX":
             Config.ANGLE_MAX = clamp(value, 0.1, 180)
+            applied_value = Config.ANGLE_MAX
         elif name == "ANG_MIN":
             Config.ANGLE_MIN = clamp(value, -180, -0.1)
+            applied_value = Config.ANGLE_MIN
         elif name == "NEUTRAL":
-            Config.NEUTRAL_ANG = clamp(value, -180, 180)
+            Config.NEUTRAL_ANG = clamp(value, 10, 50)
+            applied_value = Config.NEUTRAL_ANG
+        elif name == "GAIN":
+            Config.GAIN = clamp(value, 0, 100)
+            applied_value = Config.GAIN
         else:
             ble_comm.send_text("ERROR,UNKNOWN_SETTING,{}".format(name))
             return
 
-        ble_comm.send_text("OK,SET,{},{}".format(name, value))
+        ble_comm.send_text("OK,SET,{},{}".format(name, applied_value))
         return
 
     if key == "GET" and len(parts) >= 2 and parts[1].strip().upper() == "CONFIG":
@@ -167,16 +175,22 @@ def process_command(command):
     if key == "MOTOR" and len(parts) >= 2:
         motor_command = parts[1].strip().upper()
         if motor_command == "STOP":
-            state.motor_enabled = False
+            state.motor_remote_enabled = False
+            motor_sleep()
             ble_comm.send_text("OK,MOTOR,STOP")
             return
         if motor_command == "ENABLE":
-            state.motor_enabled = True
+            state.motor_remote_enabled = True
             ble_comm.send_text("OK,MOTOR,ENABLE")
             return
+        ble_comm.send_text("ERROR,INVALID_MOTOR_COMMAND")
+        return
 
     if key == "SAVE":
-        ble_comm.send_text("OK,SAVE")
+        if save_config():
+            ble_comm.send_text("OK,SAVE")
+        else:
+            ble_comm.send_text("ERROR,SAVE_FAILED")
         return
 
     if key == "PING":
@@ -188,15 +202,17 @@ def process_command(command):
 
 async def command_task():
     while True:
-        command = ble_comm.get_command()
-        if command is not None:
+        while True:
+            command = ble_comm.get_command()
+            if command is None:
+                break
             try:
                 process_command(command)
             except Exception as e:
                 print("command error:", e)
                 ble_comm.send_text("ERROR,COMMAND")
 
-        await asyncio.sleep_ms(1000)
+        await asyncio.sleep_ms(50)
 
 
 async def ble_send_task():
@@ -312,11 +328,12 @@ async def control_task():
                 await asyncio.sleep_ms(Config.CONTROL_INTERVAL_MS)
                 continue
 
-            if state.switch_pressed:
-                ble_comm.send_text("PONG")
-
-            com = ble_comm.get_command()
-            print(com)
+            if not state.motor_remote_enabled:
+                state.target_pwm_command = 0.0
+                state.current_pwm_command = 0.0
+                motor_sleep()
+                await asyncio.sleep_ms(Config.CONTROL_INTERVAL_MS)
+                continue
 
             motor_enable()
 

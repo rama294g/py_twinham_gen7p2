@@ -45,6 +45,7 @@ class SystemState:
     target_pwm_command = 0.0
     current_pwm_command = 0.0
     motor_enabled = False
+    motor_remote_enabled = True
     motor_state = "STOP"
     menu_mode = False
     menu_level = 0

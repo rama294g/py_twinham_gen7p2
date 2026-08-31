@@ -25,9 +25,11 @@ def save_config():
             ujson.dump(cfg, f)
 
         print("Config saved")
+        return True
 
     except Exception as e:
         print("save_config error:", e)
+        return False
 
 
 def load_config():
