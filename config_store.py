@@ -16,6 +16,7 @@ def save_config():
             "PWM_MIN": Config.PWM_MIN,
             "ANGLE_MAX": Config.ANGLE_MAX,
             "ANGLE_MIN": Config.ANGLE_MIN,
+            "SW_IS_RIGHT": Config.SW_IS_RIGHT,
             "line1_setting": state.line1_setting,
             "line2_setting": state.line2_setting,
         }
@@ -48,6 +49,14 @@ def load_config():
         Config.ANGLE_MAX = clamp(int(cfg.get("ANGLE_MAX", 90)), 1, 180)
         Config.ANGLE_MIN = clamp(int(cfg.get("ANGLE_MIN", -90)), -180, -1)
 
+        sw_is_right = cfg.get("SW_IS_RIGHT", Config.SW_IS_RIGHT)
+        if isinstance(sw_is_right, bool):
+            Config.SW_IS_RIGHT = sw_is_right
+        elif sw_is_right in (0, 1):
+            Config.SW_IS_RIGHT = bool(sw_is_right)
+        else:
+            Config.SW_IS_RIGHT = False
+
         # -----------------------------------------------------
         # DISPLAY設定を厳密に検証
         # -----------------------------------------------------
@@ -78,5 +87,6 @@ def load_config():
         Config.ANGLE_MIN = -90
         Config.GAIN = 50
         Config.NEUTRAL_ANG = 30
+        Config.SW_IS_RIGHT = False
         state.line1_setting = 0
         state.line2_setting = 1

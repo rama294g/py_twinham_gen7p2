@@ -7,6 +7,7 @@ from app_state import (
     Config, MENU_DISPLAY, MENU_EDIT_ANG_MAX, MENU_EDIT_ANG_MIN,
     MENU_EDIT_LINE1, MENU_EDIT_LINE2,
     MENU_EDIT_GAIN, MENU_EDIT_NEUTRAL, MENU_EDIT_PWM_MAX, MENU_EDIT_PWM_MIN,
+    MENU_EDIT_SW_SIDE,
     MENU_MAIN, MENU_SETTING, clamp, display_menu_items, display_value_items,
     main_menu_items, setting_menu_items, state,
 )
@@ -382,6 +383,16 @@ class MenuManager:
             )
             return
 
+        if state.menu_level == MENU_EDIT_SW_SIDE:
+            if joy in ("UP", "RIGHT"):
+                Config.SW_IS_RIGHT = True
+            elif joy in ("DOWN", "LEFT"):
+                Config.SW_IS_RIGHT = False
+            elif joy == "CENTER":
+                save_config()
+                state.menu_level = MENU_SETTING
+            return
+
         # -------------------------------------------------
         # Current menu
         # -------------------------------------------------
@@ -447,7 +458,8 @@ class MenuManager:
                 MENU_EDIT_PWM_MAX,
                 MENU_EDIT_PWM_MIN,
                 MENU_EDIT_ANG_MAX,
-                MENU_EDIT_ANG_MIN
+                MENU_EDIT_ANG_MIN,
+                MENU_EDIT_SW_SIDE
             ):
                 state.menu_level = MENU_DISPLAY if state.menu_level in (MENU_EDIT_LINE1, MENU_EDIT_LINE2) else MENU_SETTING
                 state.menu_index = 0
@@ -539,6 +551,9 @@ class MenuManager:
             elif selected == "ANG_MIN":
                 state.menu_level = MENU_EDIT_ANG_MIN
 
+            elif selected == "SW_SIDE":
+                state.menu_level = MENU_EDIT_SW_SIDE
+
             elif selected == "RESET":
 
                 Config.PWM_MAX = 30
@@ -547,6 +562,7 @@ class MenuManager:
                 Config.ANGLE_MIN = -90
                 Config.GAIN = 50
                 Config.NEUTRAL_ANG = 30
+                Config.SW_IS_RIGHT = False
 
                 state.line1_setting = 0
                 state.line2_setting = 1
@@ -710,6 +726,11 @@ async def display_task():
                     Config.ANGLE_MIN
                 )
 
+            elif state.menu_level == MENU_EDIT_SW_SIDE:
+
+                line1 = "SW_SIDE"
+                line2 = ">RIGHT" if Config.SW_IS_RIGHT else ">LEFT"
+
             else:
 
                 line1 = "MENU"
@@ -747,4 +768,3 @@ async def display_task():
             state.last_line2 = line2
 
         await asyncio.sleep_ms(200)
-

@@ -8,12 +8,6 @@ Q1_RAD = math.radians(Config.Q1_DEG)
 COS_Q1 = math.cos(Q1_RAD)
 SIN_Q1 = math.sin(Q1_RAD)
 
-if Config.SW_IS_RIGHT:
-    SIGN_LR = -1.0
-else:
-    SIGN_LR = 1.0
-
-
 def update_angle(sensor, dt):
 
     m_accx = sensor[0]
@@ -26,11 +20,15 @@ def update_angle(sensor, dt):
     state.gyro_z = m_gyroz
     state.dt = dt
 
+    # The mounting side is user-editable at runtime, so do not cache its sign
+    # when this module is imported (configuration is loaded later at startup).
+    sign_lr = -1.0 if Config.SW_IS_RIGHT else 1.0
+
     new_accx = m_accx
 
-    new_accy = SIGN_LR * (COS_Q1 * m_accy + SIN_Q1 * m_accz)
+    new_accy = sign_lr * (COS_Q1 * m_accy + SIN_Q1 * m_accz)
 
-    new_gyroz = SIGN_LR * (COS_Q1 * m_gyroz - SIN_Q1 * m_gyroy)
+    new_gyroz = sign_lr * (COS_Q1 * m_gyroz - SIN_Q1 * m_gyroy)
 
     state.gyro_angle_rate = -new_gyroz
 

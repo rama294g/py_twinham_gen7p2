@@ -96,6 +96,7 @@ mpremote connect auto repl
 - `NEUTRAL`: 基準角度
 - `PWM_MAX` / `PWM_MIN`: 正転・逆転の最大 PWM 指令値
 - `ANG_MAX` / `ANG_MIN`: PWM へ割り当てる正負の角度範囲
+- `SW_SIDE`: スイッチの取付側（`LEFT` / `RIGHT`）
 - `RESET`: PWM、角度範囲、LCD 表示項目を初期値へ戻す
 - `DISPLAY`: LCD の 1 行目と 2 行目に表示する情報を選択
 
@@ -113,6 +114,7 @@ LCD には角度、PWM、センサー状態、スイッチ状態、ゼロ点、�
 | `PWM_MIN` | `-30` | `-100` ～ `-1` |
 | `ANGLE_MAX` | `90` | `1` ～ `180` 度 |
 | `ANGLE_MIN` | `-90` | `-180` ～ `-1` 度 |
+| `SW_IS_RIGHT` | `false` (`LEFT`) | `LEFT` / `RIGHT` |
 
 `config.json` が存在しない、読み込めない、または値が不正な場合は初期値を使用します。設定ファイルを削除すると、次回起動時は初期値で動作します。
 
