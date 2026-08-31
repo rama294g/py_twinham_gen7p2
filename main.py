@@ -221,7 +221,7 @@ async def control_task():
 
             state.current_pwm_command += (
                 state.target_pwm_command - state.current_pwm_command
-            ) * 0.2
+            ) * 1.0
 
             duty = state.current_pwm_command
 
