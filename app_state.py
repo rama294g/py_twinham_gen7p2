@@ -69,6 +69,7 @@ MENU_EDIT_PWM_MAX = 12
 MENU_EDIT_PWM_MIN = 13
 MENU_EDIT_ANG_MAX = 14
 MENU_EDIT_ANG_MIN = 15
+MENU_EDIT_SW_SIDE = 16
 main_menu_items = ["SETTING", "DISPLAY", "RETURN"]
 display_menu_items = ["1stLine", "2ndLine", "RETURN"]
 setting_menu_items = [
@@ -78,6 +79,7 @@ setting_menu_items = [
     "PWM_MIN",
     "ANG_MAX",
     "ANG_MIN",
+    "SW_SIDE",
     "RESET",
     "RETURN",
 ]
