@@ -9,7 +9,6 @@ class Config:
     ANGLE_MAX = 90
     PWM_MIN = -100
     PWM_MAX = 100
-    PWM_DEADBAND = 0
     MOTOR_PWM_FREQ = 5000
     CONTROL_INTERVAL_MS = 20
     SENSOR_INTERVAL_MS = 20

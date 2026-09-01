@@ -311,13 +311,12 @@ async def control_task():
             ) * 1.0
             duty = state.current_pwm_command * state.switch_gain
 
-            # Deadband -------------------------------------------------
-            if abs(duty) < Config.PWM_DEADBAND:
-                motor_stop()
-            elif duty > 0:
+            if duty > 0:
                 motor_ccw(abs(duty))
-            else:
+            elif duty < 0:
                 motor_cw(abs(duty))
+            else:
+                motor_stop()
 
         except Exception as e:
             print("CONTROL ERROR:", e)
