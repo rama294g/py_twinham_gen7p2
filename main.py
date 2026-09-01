@@ -22,7 +22,7 @@ from blue_commu import BLECommunication
 # Raspberry Pi Pico2W Pin Assignment
 UART1_TX_PIN = 4
 UART1_RX_PIN = 5
-ZERO_SWITCH_PIN = 6
+OUTPUT_SWITCH_PIN = 6
 MOTOR_CW_PIN = 16
 MOTOR_CCW_PIN = 17
 MOTOR_SLEEP_PIN = 18
@@ -32,7 +32,7 @@ MOTOR_SLEEP_PIN = 18
 # Create Pin
 uart1_tx_pin = Pin(UART1_TX_PIN)
 uart1_rx_pin = Pin(UART1_RX_PIN)
-zero_switch_pin = Pin(ZERO_SWITCH_PIN, Pin.IN, Pin.PULL_UP)
+output_switch_pin = Pin(OUTPUT_SWITCH_PIN, Pin.IN, Pin.PULL_UP)
 cw_pin = Pin(MOTOR_CW_PIN, Pin.OUT)
 ccw_pin = Pin(MOTOR_CCW_PIN, Pin.OUT)
 sleep_pin = Pin(MOTOR_SLEEP_PIN, Pin.OUT)
@@ -63,11 +63,6 @@ print()
 print("================================")
 print("PICO 2W INTEGRATED START")
 print("================================")
-
-
-ZERO_DEBOUNCE_MS = 300
-last_switch = zero_switch_pin.value()
-last_zero_time = utime.ticks_ms()
 
 
 # =========================================================
@@ -273,7 +268,7 @@ async def control_task():
         try:
 
             # Switch -------------------------------------------------
-            switch_now = zero_switch_pin.value()
+            switch_now = output_switch_pin.value()
             state.switch_pressed = 1 if switch_now == 0 else 0
             if state.switch_pressed > state.switch_gain:
                 state.switch_gain = clamp(state.switch_gain + 0.04, 0.0, 1.0)
@@ -480,9 +475,6 @@ async def main():
     print("JOY    : GP26")
     print("PWM    : 5kHz")
     print("================================")
-
-    if Config.MOTOR_REQUIRE_ZERO:
-        print("MOTOR WAITING FOR ZERO SWITCH")
 
     print("MOTOR RUN ONLY WHILE GP6 BUTTON IS PRESSED")
     print("SENSOR READ ERROR -> KEEP LAST VALID ANGLE")

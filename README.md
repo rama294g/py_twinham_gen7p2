@@ -112,7 +112,7 @@ GP6 を押すと `switch_gain` が制御周期ごとに `0.04` ずつ増え、�
 
 ### LCD 表示項目
 
-`DISPLAY` では 1 行目と 2 行目について、`ANGLE`、`PWM`、`SENSOR`、`SWITCH`、`ZERO`（実際には `NEUTRAL` 値）、`JOY`、`OBS`、`KAL`、`LPF`、`GYRO`、`ERROR` から選択できます。LCD の幅に合わせて各行は先頭 8 文字に切り詰められます。
+`DISPLAY` では 1 行目と 2 行目について、`ANGLE`、`PWM`、`SENSOR`、`SWITCH`、`NEUTRAL`、`JOY`、`OBS`、`KAL`、`LPF`、`GYRO`、`ERROR` から選択できます。LCD の幅に合わせて各行は先頭 8 文字に切り詰められます。
 
 ## 設定値と `config.json`
 
@@ -180,7 +180,7 @@ DATA,<angle>,<joystick>,<switch_pressed>,<current_pwm_command>,<ENABLE|STOP>,<OK
 - 一時的にセンサーデータが来ない間は最後に算出した角度を保持します。
 - BNO055 の受信は UART RX-idle soft IRQ で処理し、ドライバー内部の受信・送信バッファは各 200 byte です。
 - `PWM_DEADBAND` は現在 `0` のため、ソフトウェア上の非ゼロ・デッドバンドはありません。
-- `MOTOR_REQUIRE_ZERO`、ゼロスイッチ用の定数、および `GAIN` は定義されていますが、現状の制御フローでは使用されていません。
+- `GAIN` は互換性のため保存されますが、現状の制御フローでは使用されていません。
 
 これらは補助的なソフトウェア機能であり、独立した非常停止回路、過電流保護、機械的な制動装置などのハードウェア安全対策を代替しません。実機では関係法令・規格を確認し、十分なリスク評価と検証を行ってください。
 
