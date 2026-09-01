@@ -175,7 +175,7 @@ def get_line(setting):
         return "SW:ON" if state.switch_pressed else "SW:OFF"
 
     if setting == 4:
-        return "Z:{:+.1f}".format(Config.NEUTRAL_ANG)
+        return "N:{:+.1f}".format(Config.NEUTRAL_ANG)
 
     if setting == 5:
         return "JOY:" + state.joystick

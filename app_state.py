@@ -20,7 +20,6 @@ class Config:
     SW_IS_RIGHT = False
     KALMAN_GAIN = 0.01
     LPF_TAU = 0.01
-    MOTOR_REQUIRE_ZERO = True
 
 
 class SystemState:
@@ -88,7 +87,7 @@ display_value_items = [
     "PWM",
     "SENSOR",
     "SWITCH",
-    "ZERO",
+    "NEUTRAL",
     "JOY",
     "OBS",
     "KAL",
