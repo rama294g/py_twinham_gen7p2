@@ -14,6 +14,7 @@ from app_state import Config, MENU_MAIN, clamp, state
 from bno055 import BNO055
 from config_store import load_config, save_config
 from lcd_menu import display_task, joystick_task, lcd_print
+from motor_control import apply_motor_output, force_motor_sleep
 from sensing import update_angle
 from blue_commu import BLECommunication
 
@@ -108,7 +109,8 @@ def send_config():
 
 
 def send_status(header):
-    motor = "ENABLE" if state.motor_enabled else "STOP"
+    # Report the physical nSLEEP state, including the normal release ramp.
+    motor = "AWAKE" if state.motor_enabled else "SLEEP"
     sensor = "OK" if state.sensor_ok else "NG"
     msg = ("{}," "{:.1f}," "{}," "{}," "{:.1f}," "{}," "{}").format(
         header,
@@ -177,7 +179,7 @@ def process_command(command):
         motor_command = parts[1].strip().upper()
         if motor_command == "STOP":
             state.motor_remote_enabled = False
-            motor_sleep()
+            force_motor_sleep(state, motor_sleep)
             ble_comm.send_text("OK,MOTOR,STOP")
             return
         if motor_command == "ENABLE":
@@ -270,25 +272,20 @@ async def control_task():
             # Switch -------------------------------------------------
             switch_now = output_switch_pin.value()
             state.switch_pressed = 1 if switch_now == 0 else 0
-            if state.switch_pressed > state.switch_gain:
-                state.switch_gain = clamp(state.switch_gain + 0.04, 0.0, 1.0)
-            if state.switch_pressed < state.switch_gain:
-                state.switch_gain = clamp(state.switch_gain - 0.04, 0.0, 1.0)
 
             m_gyro2.tx_GET_ACCGYRO()
-            if (
-                (state.menu_mode)
-                or (not state.sensor_ok)
-                or (not state.motor_remote_enabled)
-            ):
-                state.target_pwm_command = 0.0
-                state.current_pwm_command = 0.0
-                motor_stop()
-                motor_sleep()
+            permitted = (
+                not state.menu_mode
+                and state.sensor_ok
+                and state.motor_remote_enabled
+            )
+            if not permitted:
+                apply_motor_output(
+                    state, state.switch_pressed, False, motor_enable,
+                    motor_sleep, motor_cw, motor_ccw
+                )
                 await asyncio.sleep_ms(Config.CONTROL_INTERVAL_MS)
                 continue
-
-            motor_enable()
 
             # Angle -> PWM -------------------------------------------------
             angle_clamped = clamp(state.angle, Config.ANGLE_MIN, Config.ANGLE_MAX)
@@ -309,20 +306,14 @@ async def control_task():
             state.current_pwm_command += (
                 state.target_pwm_command - state.current_pwm_command
             ) * 1.0
-            duty = state.current_pwm_command * state.switch_gain
-
-            if duty > 0:
-                motor_ccw(abs(duty))
-            elif duty < 0:
-                motor_cw(abs(duty))
-            else:
-                motor_stop()
+            apply_motor_output(
+                state, state.switch_pressed, True, motor_enable,
+                motor_sleep, motor_cw, motor_ccw
+            )
 
         except Exception as e:
             print("CONTROL ERROR:", e)
-            state.target_pwm_command = 0.0
-            state.current_pwm_command = 0.0
-            motor_sleep()
+            force_motor_sleep(state, motor_sleep)
 
         await asyncio.sleep_ms(Config.CONTROL_INTERVAL_MS)
 
@@ -339,9 +330,7 @@ async def monitor_task():
 
                 print("SENSOR TIMEOUT - MOTOR STOP")
                 state.sensor_ok = False
-                state.target_pwm_command = 0.0
-                state.current_pwm_command = 0.0
-                motor_sleep()
+                force_motor_sleep(state, motor_sleep)
 
         gc.collect()
 
@@ -475,7 +464,8 @@ async def main():
     print("PWM    : 5kHz")
     print("================================")
 
-    print("MOTOR RUN ONLY WHILE GP6 BUTTON IS PRESSED")
+    print("MOTOR: GP6 RELEASE RAMPS DOWN, THEN nSLEEP LOW")
+    print("MOTOR: MENU / BLE STOP / SENSOR ERROR STOPS IMMEDIATELY")
     print("SENSOR READ ERROR -> KEEP LAST VALID ANGLE")
 
     while True:
