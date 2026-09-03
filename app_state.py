@@ -19,6 +19,7 @@ class Config:
     SW_IS_RIGHT = False
     KALMAN_GAIN = 0.01
     LPF_TAU = 0.01
+    SW_GAIN = 0.04
 
 
 class SystemState:
