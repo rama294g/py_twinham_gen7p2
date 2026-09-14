@@ -39,7 +39,8 @@ TwinHAM は、手動車椅子を電動化するためのユニットです。本
 | GP1 | LCD SCL | I2C0、100 kHz |
 | GP4 | BNO055 UART TX | UART1、Pico から BNO055 へ接続 |
 | GP5 | BNO055 UART RX | UART1、BNO055 から Pico へ接続 |
-| GP6 | 出力操作スイッチ | Active Low、内部プルアップ |
+| GP6 | 左側ユニットの出力操作スイッチ | `DEVICE_NAME` が `TwinHAM_LH` の場合に使用。Active Low、内部プルアップ |
+| GP7 | 右側ユニットの出力操作スイッチ | `DEVICE_NAME` が `TwinHAM_LH` 以外の場合に使用。Active Low、内部プルアップ |
 | GP16 | モータードライバー CW PWM | 5 kHz |
 | GP17 | モータードライバー CCW PWM | 5 kHz |
 | GP18 | モータードライバー `nSLEEP` | Low でスリープ |

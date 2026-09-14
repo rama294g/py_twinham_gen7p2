@@ -11,11 +11,11 @@ import utime
 from machine import Pin, PWM
 
 from app_state import Config, MENU_MAIN, clamp, state
-from bno055 import BNO055, DEVICE_NAME
+from bno055 import BNO055
 from config_store import load_config, save_config
 from lcd_menu import display_task, joystick_task, lcd_print
 from sensing import update_angle
-from blue_commu import BLECommunication
+from blue_commu import BLECommunication, DEVICE_NAME
 
 
 # =========================================================
@@ -34,9 +34,10 @@ MOTOR_SLEEP_PIN = 18
 uart1_tx_pin = Pin(UART1_TX_PIN)
 uart1_rx_pin = Pin(UART1_RX_PIN)
 if DEVICE_NAME == b"TwinHAM_LH":
-    output_switch_pin = Pin(OUTPUT_SWITCH_PIN_LEFT, Pin.IN, Pin.PULL_UP)
+    output_switch_pin_number = OUTPUT_SWITCH_PIN_LEFT
 else:
-    output_switch_pin = Pin(OUTPUT_SWITCH_PIN_RIGHT, Pin.IN, Pin.PULL_UP)
+    output_switch_pin_number = OUTPUT_SWITCH_PIN_RIGHT
+output_switch_pin = Pin(output_switch_pin_number, Pin.IN, Pin.PULL_UP)
 cw_pin = Pin(MOTOR_CW_PIN, Pin.OUT)
 ccw_pin = Pin(MOTOR_CCW_PIN, Pin.OUT)
 sleep_pin = Pin(MOTOR_SLEEP_PIN, Pin.OUT)
@@ -483,13 +484,13 @@ async def main():
     print("================================")
     print("BNO055 : WIRED UART")
     print("LCD    : GP0/GP1")
-    print("SW     : GP6")
+    print("SW     : GP{}".format(output_switch_pin_number))
     print("MOTOR  : GP16/GP17/GP18")
     print("JOY    : GP26")
     print("PWM    : 5kHz")
     print("================================")
 
-    print("MOTOR RUN ONLY WHILE GP6 BUTTON IS PRESSED")
+    print("MOTOR RUN ONLY WHILE GP{} BUTTON IS PRESSED".format(output_switch_pin_number))
     print("SENSOR READ ERROR -> KEEP LAST VALID ANGLE")
 
     while True:
