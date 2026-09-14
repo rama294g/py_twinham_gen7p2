@@ -31,7 +31,9 @@ UART_UUID_RX = bluetooth.UUID("6E400002-B5A3-F393-E0A9-E50E24DCCA9E")
 try:
     with open("ble_settings.json", "r") as f:
         cfg = ujson.load(f)
-    DEVICE_NAME = cfg.get("DEVICE_NAME", b"TwinHAM_LH")
+    DEVICE_NAME = cfg.get("DEVICE_NAME", "TwinHAM_LH")
+    if isinstance(DEVICE_NAME, str):
+        DEVICE_NAME = DEVICE_NAME.encode("utf-8")
     UART_UUID_SVCS = bluetooth.UUID(cfg.get("UART_UUID_SVCS", "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"))
     UART_UUID_TX = bluetooth.UUID(cfg.get("UART_UUID_TX", "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"))
     UART_UUID_RX = bluetooth.UUID(cfg.get("UART_UUID_RX", "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"))
