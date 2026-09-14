@@ -11,7 +11,7 @@ import utime
 from machine import Pin, PWM
 
 from app_state import Config, MENU_MAIN, clamp, state
-from bno055 import BNO055
+from bno055 import BNO055, DEVICE_NAME
 from config_store import load_config, save_config
 from lcd_menu import display_task, joystick_task, lcd_print
 from sensing import update_angle
@@ -22,7 +22,8 @@ from blue_commu import BLECommunication
 # Raspberry Pi Pico2W Pin Assignment
 UART1_TX_PIN = 4
 UART1_RX_PIN = 5
-OUTPUT_SWITCH_PIN = 6
+OUTPUT_SWITCH_PIN_LEFT = 6
+OUTPUT_SWITCH_PIN_RIGHT = 7
 MOTOR_CW_PIN = 16
 MOTOR_CCW_PIN = 17
 MOTOR_SLEEP_PIN = 18
@@ -32,7 +33,10 @@ MOTOR_SLEEP_PIN = 18
 # Create Pin
 uart1_tx_pin = Pin(UART1_TX_PIN)
 uart1_rx_pin = Pin(UART1_RX_PIN)
-output_switch_pin = Pin(OUTPUT_SWITCH_PIN, Pin.IN, Pin.PULL_UP)
+if DEVICE_NAME == b"TwinHAM_LH":
+    output_switch_pin = Pin(OUTPUT_SWITCH_PIN_LEFT, Pin.IN, Pin.PULL_UP)
+else:
+    output_switch_pin = Pin(OUTPUT_SWITCH_PIN_RIGHT, Pin.IN, Pin.PULL_UP)
 cw_pin = Pin(MOTOR_CW_PIN, Pin.OUT)
 ccw_pin = Pin(MOTOR_CCW_PIN, Pin.OUT)
 sleep_pin = Pin(MOTOR_SLEEP_PIN, Pin.OUT)
@@ -258,6 +262,12 @@ def motor_ccw(percent):
     ccw_pwm.duty_u16(pwm_duty_percent(percent))
     state.motor_state = "CCW"
 
+def motor_cwccw(percent):
+    percent = clamp(percent, -100.0, 100.0)
+    cw_pwm.duty_u16(pwm_duty_percent((100.0 - percent) / 2))
+    ccw_pwm.duty_u16(pwm_duty_percent((100.0 + percent) / 2))
+    state.motor_state = "CWCCW"
+
 
 # Safe initial condition
 motor_sleep()
@@ -311,12 +321,16 @@ async def control_task():
             ) * 1.0
             duty = state.current_pwm_command * state.switch_gain
 
-            if duty > 0:
-                motor_ccw(abs(duty))
-            elif duty < 0:
-                motor_cw(abs(duty))
-            else:
+            if duty == 0:
                 motor_stop()
+            else:
+                motor_cwccw(duty)
+            # if duty > 0:
+            #     motor_ccw(abs(duty))
+            # elif duty < 0:
+            #     motor_cw(abs(duty))
+            # else:
+            #     motor_stop()
 
         except Exception as e:
             print("CONTROL ERROR:", e)
