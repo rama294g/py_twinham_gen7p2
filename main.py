@@ -100,7 +100,8 @@ def send_config():
             "ANG_MAX,{:.1f},"
             "ANG_MIN,{:.1f},"
             "NEUTRAL,{:.1f},"
-            "GAIN,{:.1f}"
+            "GAIN,{:.1f},"
+            "SW_GAIN,{:.2f}"
         ).format(
             Config.PWM_MAX,
             Config.PWM_MIN,
@@ -108,6 +109,7 @@ def send_config():
             Config.ANGLE_MIN,
             Config.NEUTRAL_ANG,
             Config.GAIN,
+            Config.SW_GAIN,
         )
     )
 
@@ -163,6 +165,9 @@ def process_command(command):
         elif name == "GAIN":
             Config.GAIN = clamp(value, 0, 100)
             applied_value = Config.GAIN
+        elif name == "SW_GAIN":
+            Config.SW_GAIN = clamp(value, 0.01, 1)
+            applied_value = Config.SW_GAIN
         else:
             ble_comm.send_text("ERROR,UNKNOWN_SETTING,{}".format(name))
             return
@@ -282,9 +287,9 @@ async def control_task():
             switch_now = output_switch_pin.value()
             state.switch_pressed = 1 if switch_now == 0 else 0
             if state.switch_pressed > state.switch_gain:
-                state.switch_gain = clamp(state.switch_gain + 0.04, 0.0, 1.0)
+                state.switch_gain = clamp(state.switch_gain + Config.SW_GAIN, 0.0, 1.0)
             if state.switch_pressed < state.switch_gain:
-                state.switch_gain = clamp(state.switch_gain - 0.04, 0.0, 1.0)
+                state.switch_gain = clamp(state.switch_gain - Config.SW_GAIN, 0.0, 1.0)
 
             m_gyro2.tx_GET_ACCGYRO()
             if (

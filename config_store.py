@@ -19,6 +19,7 @@ def save_config():
             "SW_IS_RIGHT": Config.SW_IS_RIGHT,
             "line1_setting": state.line1_setting,
             "line2_setting": state.line2_setting,
+            "SW_GAIN": Config.SW_GAIN,
         }
 
         with open(Config.CONFIG_FILE, "w") as f:
@@ -50,6 +51,7 @@ def load_config():
         Config.PWM_MIN = clamp(int(cfg.get("PWM_MIN", -30)), -100, -1)
         Config.ANGLE_MAX = clamp(int(cfg.get("ANGLE_MAX", 90)), 1, 180)
         Config.ANGLE_MIN = clamp(int(cfg.get("ANGLE_MIN", -90)), -180, -1)
+        Config.SW_GAIN = clamp(float(cfg.get("SW_GAIN", 0.04)), 0.01, 1)
 
         sw_is_right = cfg.get("SW_IS_RIGHT", Config.SW_IS_RIGHT)
         if isinstance(sw_is_right, bool):
@@ -92,3 +94,4 @@ def load_config():
         Config.SW_IS_RIGHT = False
         state.line1_setting = 0
         state.line2_setting = 1
+        Config.SW_GAIN = 0.04
