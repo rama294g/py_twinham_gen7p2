@@ -20,6 +20,16 @@ class Config:
     KALMAN_GAIN = 0.01
     LPF_TAU = 0.01
     SW_GAIN = 0.04
+    # Battery bar display thresholds
+    BAT_BAR_VOLTAGES = (
+        11.0,
+        12.0,
+        13.0,
+        14.0,
+        15.0,
+        16.0,
+        17.0,
+    )
 
 
 class SystemState:
@@ -96,6 +106,7 @@ display_value_items = [
     "GYRO",
     "ERROR",
     "BAT",
+    "BATBAR",
 ]
 
 

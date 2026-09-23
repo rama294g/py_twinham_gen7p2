@@ -88,35 +88,18 @@ def lcd_init():
 
     utime.sleep_ms(2)
 
-
-def lcd_print(text, line=0):
-
-    text = str(text)
-    text = (text + "        ")[:8]
-
-    lcd_cmd(0x80 if line == 0 else 0xC0)
-
-    for ch in text:
-        lcd_data(ord(ch))
-
-
-lcd_init()
-lcd_print("PICO 2W", 0)
-lcd_print("START", 1)
-
 # =====================================================
 # CUSTOM CHARACTER
 # Character 0 = filled block
+# Character 1 = empty block
 # =====================================================
 
-def create_bar_char(self):
+def create_bar_chars():
 
-    # CGRAM address 0
+    # Character 0 : ■
+    lcd_cmd(0x40)
 
-    self.write_cmd(0x40)
-
-    pattern = [
-
+    filled = [
         0b11111,
         0b11111,
         0b11111,
@@ -124,19 +107,55 @@ def create_bar_char(self):
         0b11111,
         0b11111,
         0b11111,
-        0b11111
-
+        0b11111,
     ]
 
-    for value in pattern:
+    for value in filled:
+        lcd_data(value)
 
-        self.write_data(value)
+    # Character 1 : □
+    lcd_cmd(0x48)
+
+    empty = [
+        0b11111,
+        0b10001,
+        0b10001,
+        0b10001,
+        0b10001,
+        0b10001,
+        0b11111,
+        0b00000,
+    ]
+
+    for value in empty:
+        lcd_data(value)
 
     # DDRAMへ戻す
+    lcd_cmd(0x80)
 
-    self.write_cmd(0x80)
+def lcd_print(text, line=0):
+
+    lcd_cmd(0x80 if line == 0 else 0xC0)
+
+    # 通常の文字列
+    if isinstance(text, str):
+
+        text = (text + "        ")[:8]
+
+        for ch in text:
+            lcd_data(ord(ch))
+
+        return
+
+    # カスタム文字を含むリスト
+    for value in text:
+        lcd_data(value)
 
 
+lcd_init()
+create_bar_chars()
+lcd_print("PICO 2W", 0)
+lcd_print("START", 1)
 
 
 # =========================================================
@@ -231,6 +250,32 @@ def get_line(setting):
 
     if setting == 11:
         return "BAT:{:.1f}".format(state.battery_voltage)
+
+    if setting == 12:
+
+        voltage = state.battery_voltage
+        thresholds = Config.BAT_BAR_VOLTAGES
+
+        level = 0
+
+        for i in range(len(thresholds)):
+            if voltage >= thresholds[i]:
+                level = i
+
+        level = max(0, min(level, 6))
+
+        bar = [ord("E")]
+
+        for i in range(6):
+
+            if i < level:
+                bar.append(0)       # ■
+            else:
+                bar.append(1)       # □
+
+        bar.append(ord("F"))
+
+        return bar
 
     return "--------"
 
@@ -702,11 +747,13 @@ async def display_task():
         else:
 
             line1 = get_line(state.line1_setting)
-
             line2 = get_line(state.line2_setting)
 
-        line1 = str(line1)[:8]
-        line2 = str(line2)[:8]
+            if isinstance(line1, str):
+                line1 = line1[:8]
+
+            if isinstance(line2, str):
+                line2 = line2[:8]
 
         if line1 != state.last_line1:
 
