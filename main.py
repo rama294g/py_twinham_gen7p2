@@ -460,6 +460,7 @@ async def battery_task():
 
                     voltage     = (battery_monitor.get_voltage())
                     batvol      = voltage
+                    state.battery_voltage = voltage
                     #raw_voltage = (battery_monitor.get_raw_voltage())
                     #adc_voltage = (battery_monitor.get_adc_voltage())
                     #raw         = (battery_monitor.get_raw())

@@ -53,6 +53,7 @@ class SystemState:
     line2_setting = 1
     last_line1 = ""
     last_line2 = ""
+    battery_voltage = 0.0
 
 
 state = SystemState()
@@ -94,6 +95,7 @@ display_value_items = [
     "LPF",
     "GYRO",
     "ERROR",
+    "BAT",
 ]
 
 

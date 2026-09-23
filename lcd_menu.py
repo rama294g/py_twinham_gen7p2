@@ -229,6 +229,9 @@ def get_line(setting):
     if setting == 10:
         return "ERR:" + str(state.total_sensor_errors)
 
+    if setting == 11:
+        return "BAT:{:.1f}".format(state.battery_voltage)
+
     return "--------"
 
 
