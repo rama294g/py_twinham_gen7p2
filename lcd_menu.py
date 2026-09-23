@@ -104,6 +104,40 @@ lcd_init()
 lcd_print("PICO 2W", 0)
 lcd_print("START", 1)
 
+# =====================================================
+# CUSTOM CHARACTER
+# Character 0 = filled block
+# =====================================================
+
+def create_bar_char(self):
+
+    # CGRAM address 0
+
+    self.write_cmd(0x40)
+
+    pattern = [
+
+        0b11111,
+        0b11111,
+        0b11111,
+        0b11111,
+        0b11111,
+        0b11111,
+        0b11111,
+        0b11111
+
+    ]
+
+    for value in pattern:
+
+        self.write_data(value)
+
+    # DDRAMへ戻す
+
+    self.write_cmd(0x80)
+
+
+
 
 # =========================================================
 # JOYSTICK

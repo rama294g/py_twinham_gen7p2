@@ -16,6 +16,7 @@ from config_store import load_config, save_config
 from lcd_menu import display_task, joystick_task, lcd_print
 from sensing import update_angle
 from blue_commu import BLECommunication, DEVICE_NAME
+from battery_sensor import BatteryMonitor
 
 
 # =========================================================
@@ -24,6 +25,8 @@ UART1_TX_PIN = 4
 UART1_RX_PIN = 5
 OUTPUT_SWITCH_PIN_LEFT = 6
 OUTPUT_SWITCH_PIN_RIGHT = 7
+MCP_SDA_PIN = 10
+MCP_SCL_PIN = 11
 MOTOR_CW_PIN = 16
 MOTOR_CCW_PIN = 17
 MOTOR_SLEEP_PIN = 18
@@ -53,6 +56,14 @@ m_gyroy = 0.0
 m_gyroz = 0.0
 last_sensor_us = None
 sensor_dt_samples_ms = []
+
+# =========================================================
+# BATTERY VOLTAGE
+# =========================================================
+
+battery_monitor = BatteryMonitor()
+battery_ok = False
+batvol=0.0
 
 
 # =========================================================
@@ -117,7 +128,7 @@ def send_config():
 def send_status(header):
     motor = "ENABLE" if state.motor_enabled else "STOP"
     sensor = "OK" if state.sensor_ok else "NG"
-    msg = ("{}," "{:.1f}," "{}," "{}," "{:.1f}," "{}," "{}").format(
+    msg = ("{}," "{:.1f}," "{}," "{}," "{:.1f}," "{}," "{}," "{:.1f}").format(
         header,
         state.angle,
         state.joystick,
@@ -125,6 +136,7 @@ def send_status(header):
         state.current_pwm_command,
         motor,
         sensor,
+        batvol,
     )
     if ble_comm.is_connected():
         ble_comm.send_text(msg)
@@ -430,6 +442,51 @@ async def check_bno055_chip_id(timeout_ms=500):
 
     return m_chip_id == 0xA0
 
+# =========================================================
+# BATTERY VOLTAGE TASK
+# =========================================================
+
+async def battery_task():
+
+    global batvol
+
+    while True:
+
+        try:
+
+            if battery_ok:
+
+                if battery_monitor.read():
+
+                    voltage     = (battery_monitor.get_voltage())
+                    batvol      = voltage
+                    #raw_voltage = (battery_monitor.get_raw_voltage())
+                    #adc_voltage = (battery_monitor.get_adc_voltage())
+                    #raw         = (battery_monitor.get_raw())
+                    #status      = (battery_monitor.get_status())
+
+                    #print(
+                    #    "BAT={:6.3f}V  "
+                    #    "AVG={:6.3f}V  "
+                    #    "ADC={:7.4f}V  "
+                    #    "RAW={:6d}  "
+                    #    "STATUS={}".format(
+                    #        raw_voltage,
+                    #        voltage,
+                    #        adc_voltage,
+                    #        raw,
+                    #        status
+                    #    )
+                    #)
+
+        except Exception as e:
+
+            print(
+                "BATTERY ERROR:",
+                e
+            )
+
+        await asyncio.sleep_ms(100)
 
 async def main():
 
@@ -437,6 +494,20 @@ async def main():
 
     motor_sleep()
     load_config()
+
+    # -----------------------------------------------------
+    # Battery Voltage
+    # -----------------------------------------------------
+    global battery_ok
+
+    print("BATTERY SENSOR INIT")
+
+    battery_ok = battery_monitor.init()
+
+    if battery_ok:
+        print("BATTERY SENSOR : OK")
+    else:
+        print("BATTERY SENSOR : NG")
 
     # -----------------------------------------------------
     # MENU SAFE START
@@ -482,6 +553,7 @@ async def main():
     asyncio.create_task(monitor_task())
     asyncio.create_task(command_task())
     asyncio.create_task(ble_send_task())
+    asyncio.create_task(battery_task())
 
     print()
     print("================================")
@@ -493,6 +565,7 @@ async def main():
     print("MOTOR  : GP16/GP17/GP18")
     print("JOY    : GP26")
     print("PWM    : 5kHz")
+    print("BAT_Vol: GP10/GP11")
     print("================================")
 
     print("MOTOR RUN ONLY WHILE GP{} BUTTON IS PRESSED".format(output_switch_pin_number))
